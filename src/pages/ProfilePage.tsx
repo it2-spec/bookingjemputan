@@ -25,6 +25,9 @@ import {
   requestNotificationPermission,
   showLocalNotification,
   isPushSupported,
+  subscribeToPush,
+  unsubscribeFromPush,
+  getPushSubscriptionStatus,
 } from '../lib/notificationService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -40,26 +43,56 @@ export default function ProfilePage() {
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains('dark')
   );
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
   const [notifSupported, setNotifSupported] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  // 'subscribed' | 'granted' (perm ok but not subscribed) | 'default' | 'denied'
+  const [pushStatus, setPushStatus] = useState<'subscribed' | 'granted' | 'default' | 'denied'>('default');
+  const [pushLoading, setPushLoading] = useState(false);
+
+  const refreshPushStatus = async () => {
+    const supported = await isPushSupported();
+    setNotifSupported(supported);
+    if (supported) {
+      const status = await getPushSubscriptionStatus();
+      setPushStatus(status);
+    }
+  };
 
   useEffect(() => {
-    isPushSupported().then((supported) => {
-      setNotifSupported(supported);
-      if (supported) setNotifPermission(Notification.permission);
-    });
+    refreshPushStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRequestPermission = async () => {
     const perm = await requestNotificationPermission();
-    setNotifPermission(perm);
+    if (perm === 'granted' && employee) {
+      setPushLoading(true);
+      await subscribeToPush(employee.id);
+      setPushLoading(false);
+    }
+    await refreshPushStatus();
+  };
+
+  const handleSubscribe = async () => {
+    if (!employee) return;
+    setPushLoading(true);
+    await subscribeToPush(employee.id);
+    await refreshPushStatus();
+    setPushLoading(false);
+  };
+
+  const handleUnsubscribe = async () => {
+    if (!employee) return;
+    setPushLoading(true);
+    await unsubscribeFromPush(employee.id);
+    await refreshPushStatus();
+    setPushLoading(false);
   };
 
   const handleTestNotification = async () => {
     await showLocalNotification(
       '🚌 Test Notifikasi Berhasil!',
-      `Hei ${employee?.name.split(' ')[0]}, notifikasi pengingat jemputan Anda sudah aktif dan berfungsi dengan baik.`,
+      `Hei ${employee?.name.split(' ')[0]}, notifikasi pengingat jemputan Anda sudah aktif. Notifikasi akan muncul bahkan saat aplikasi ditutup!`,
     );
     setTestSent(true);
     setTimeout(() => setTestSent(false), 3000);
@@ -233,18 +266,18 @@ export default function ProfilePage() {
 
         <Card animate={false}>
           <div className="space-y-4">
-            {/* Permission status */}
+            {/* Status indicator */}
             <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                notifPermission === 'granted'
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                pushStatus === 'subscribed'
                   ? 'bg-emerald-100 dark:bg-emerald-900/40'
-                  : notifPermission === 'denied'
+                  : pushStatus === 'denied'
                   ? 'bg-red-100 dark:bg-red-900/40'
                   : 'bg-amber-100 dark:bg-amber-900/40'
               }`}>
-                {notifPermission === 'granted' ? (
+                {pushStatus === 'subscribed' ? (
                   <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                ) : notifPermission === 'denied' ? (
+                ) : pushStatus === 'denied' ? (
                   <BellOff className="w-4 h-4 text-red-500" />
                 ) : (
                   <BellRing className="w-4 h-4 text-amber-500" />
@@ -252,40 +285,54 @@ export default function ProfilePage() {
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                  Status Notifikasi
+                  Push Notifikasi
                 </p>
                 <p className={`text-xs ${
-                  notifPermission === 'granted'
+                  pushStatus === 'subscribed'
                     ? 'text-emerald-600 dark:text-emerald-400'
-                    : notifPermission === 'denied'
+                    : pushStatus === 'denied'
                     ? 'text-red-500'
                     : 'text-amber-600'
                 }`}>
                   {!notifSupported
                     ? 'Tidak didukung di browser ini'
-                    : notifPermission === 'granted'
-                    ? 'Aktif — pengingat akan dikirim jam 17:00–18:30'
-                    : notifPermission === 'denied'
+                    : pushStatus === 'subscribed'
+                    ? '✓ Aktif — bekerja bahkan saat app ditutup'
+                    : pushStatus === 'denied'
                     ? 'Ditolak — aktifkan di pengaturan browser'
+                    : pushStatus === 'granted'
+                    ? 'Izin OK, belum terdaftar'
                     : 'Belum diizinkan'}
                 </p>
               </div>
             </div>
 
-            {/* Request permission button */}
-            {notifSupported && notifPermission === 'default' && (
+            {/* CTA Buttons */}
+            {notifSupported && pushStatus === 'default' && (
               <button
                 onClick={handleRequestPermission}
-                className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-95 text-white text-sm font-semibold transition-all duration-200"
+                disabled={pushLoading}
+                className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-95 text-white text-sm font-semibold transition-all duration-200 disabled:opacity-60"
               >
-                Izinkan Notifikasi
+                {pushLoading ? 'Memproses...' : 'Izinkan & Daftarkan Notifikasi'}
               </button>
             )}
 
-            {/* Test notification button */}
-            {notifPermission === 'granted' && (
+            {notifSupported && pushStatus === 'granted' && (
+              <button
+                onClick={handleSubscribe}
+                disabled={pushLoading}
+                className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-95 text-white text-sm font-semibold transition-all duration-200 disabled:opacity-60"
+              >
+                {pushLoading ? 'Mendaftar...' : 'Daftarkan Perangkat Ini'}
+              </button>
+            )}
+
+            {/* Subscribed actions */}
+            {pushStatus === 'subscribed' && (
               <>
                 <div className="border-b border-surface-100 dark:border-surface-800" />
+                {/* Test button */}
                 <button
                   onClick={handleTestNotification}
                   className="flex items-center justify-between w-full cursor-pointer group"
@@ -305,12 +352,7 @@ export default function ProfilePage() {
                   </div>
                   <AnimatePresence mode="wait">
                     {testSent ? (
-                      <motion.div
-                        key="check"
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0, opacity: 0 }}
-                      >
+                      <motion.div key="check" initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}>
                         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                       </motion.div>
                     ) : (
@@ -319,6 +361,25 @@ export default function ProfilePage() {
                       </motion.div>
                     )}
                   </AnimatePresence>
+                </button>
+                <div className="border-b border-surface-100 dark:border-surface-800" />
+                {/* Unsubscribe */}
+                <button
+                  onClick={handleUnsubscribe}
+                  disabled={pushLoading}
+                  className="flex items-center gap-3 w-full cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
+                    <BellOff className="w-4 h-4 text-red-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-red-500">
+                      {pushLoading ? 'Memproses...' : 'Batalkan Notifikasi'}
+                    </p>
+                    <p className="text-xs text-surface-400 dark:text-surface-500">
+                      Hapus perangkat ini dari daftar penerima
+                    </p>
+                  </div>
                 </button>
               </>
             )}

@@ -144,3 +144,32 @@ CREATE POLICY "Allow public update bookings" ON bookings
 -- ============================================================
 
 ALTER PUBLICATION supabase_realtime ADD TABLE bookings;
+
+-- ============================================================
+-- PUSH SUBSCRIPTIONS (Web Push Notifications)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookup by employee
+CREATE INDEX IF NOT EXISTS idx_push_subs_employee ON push_subscriptions(employee_id);
+
+-- RLS
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read push_subscriptions" ON push_subscriptions
+  FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert push_subscriptions" ON push_subscriptions
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public delete push_subscriptions" ON push_subscriptions
+  FOR DELETE USING (true);
+

@@ -46,10 +46,38 @@ export default function AdminDashboard() {
 
   const isClosed = isBookingClosed(selectedDate);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
 
   const handleSendBroadcast = async () => {
     setIsBroadcasting(true);
+    setBroadcastResult(null);
     try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+      // 1. Call Edge Function for true Web Push (works when app is closed)
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          title: '📢 Notifikasi dari Admin',
+          message: 'Pengingat dari Admin: Jangan lupa pesan jemputan untuk besok!',
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setBroadcastResult(result);
+        toast.success(`Berhasil dikirim ke ${result.sent} dari ${result.total} perangkat!`);
+      } else {
+        const errText = await res.text();
+        console.warn('Edge Function error:', errText);
+        toast.error('Gagal kirim via Web Push. Cek Supabase Edge Function.');
+      }
+
+      // 2. Also send Realtime broadcast as fallback (for users with app open)
       const channel = supabase.channel('admin-notifications');
       await channel.subscribe();
       await channel.send({
@@ -60,13 +88,14 @@ export default function AdminDashboard() {
           message: 'Pengingat dari Admin: Jangan lupa pesan jemputan untuk besok!',
         },
       });
-      toast.success('Broadcast notifikasi berhasil dikirim ke semua user!');
     } catch (err) {
       toast.error('Gagal mengirim broadcast notifikasi');
+      console.error(err);
     } finally {
       setIsBroadcasting(false);
     }
   };
+
 
   // Group bookings by route
   const routeStats = routes?.map((route) => {
@@ -118,14 +147,26 @@ export default function AdminDashboard() {
           <button
             onClick={() => handleSendBroadcast()}
             disabled={isBroadcasting}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all"
-            title="Kirim Notifikasi ke Semua User"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-60"
+            title="Kirim Push Notification ke Semua User"
           >
-            <Bell className="w-4 h-4" />
-            <span>{isBroadcasting ? 'Sending...' : 'Test Broadcast'}</span>
+            <Bell className={`w-4 h-4 ${isBroadcasting ? 'animate-pulse' : ''}`} />
+            <span>{isBroadcasting ? 'Mengirim...' : 'Broadcast'}</span>
           </button>
         </div>
       </div>
+
+      {/* Broadcast result banner */}
+      {broadcastResult && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800 text-xs">
+          <Bell className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+          <span className="text-primary-700 dark:text-primary-300">
+            Push terkirim ke <strong>{broadcastResult.sent}</strong> perangkat
+            {broadcastResult.failed > 0 && <>, <span className="text-red-500">{broadcastResult.failed} gagal</span></>}
+            {' '}(total terdaftar: {broadcastResult.total})
+          </span>
+        </div>
+      )}
 
       {/* Lock status banner */}
       <Card className={isClosed ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200' : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200'}>
