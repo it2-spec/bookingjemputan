@@ -13,7 +13,10 @@ import {
   FileSpreadsheet,
   ChevronRight,
   RefreshCw,
+  Bell,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -42,6 +45,28 @@ export default function AdminDashboard() {
   useRealtimeBookings(null, selectedDate);
 
   const isClosed = isBookingClosed(selectedDate);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  const handleSendBroadcast = async () => {
+    setIsBroadcasting(true);
+    try {
+      const channel = supabase.channel('admin-notifications');
+      await channel.subscribe();
+      await channel.send({
+        type: 'broadcast',
+        event: 'admin-broadcast',
+        payload: {
+          title: '📢 Notifikasi dari Admin',
+          message: 'Pengingat dari Admin: Jangan lupa pesan jemputan untuk besok!',
+        },
+      });
+      toast.success('Broadcast notifikasi berhasil dikirim ke semua user!');
+    } catch (err) {
+      toast.error('Gagal mengirim broadcast notifikasi');
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
 
   // Group bookings by route
   const routeStats = routes?.map((route) => {
@@ -89,6 +114,15 @@ export default function AdminDashboard() {
             title="Refresh Data"
           >
             <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => handleSendBroadcast()}
+            disabled={isBroadcasting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all"
+            title="Kirim Notifikasi ke Semua User"
+          >
+            <Bell className="w-4 h-4" />
+            <span>{isBroadcasting ? 'Sending...' : 'Test Broadcast'}</span>
           </button>
         </div>
       </div>

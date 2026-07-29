@@ -16,6 +16,7 @@ import {
   isPushSupported,
 } from '../lib/notificationService';
 import { getTomorrowDate } from '../lib/vehicleLogic';
+import { supabase } from '../lib/supabase';
 
 // Reminder schedule in WIB (UTC+7) — minutes since midnight WIB
 const REMINDER_TIMES_WIB = [
@@ -56,6 +57,26 @@ export function useBookingReminder() {
         }, 5000);
       }
     });
+  }, [isAuthenticated]);
+
+  // Realtime Broadcast Listener from Admin
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const channel = supabase.channel('admin-notifications');
+
+    channel
+      .on('broadcast', { event: 'admin-broadcast' }, (payload) => {
+        const { title, message } = payload.payload || {};
+        if (title && message) {
+          showLocalNotification(title, message);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [isAuthenticated]);
 
   // Reminder scheduling loop
