@@ -29,18 +29,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore session from localStorage on mount
+  // Restore session from localStorage on mount and validate against DB
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Employee;
+        // Immediately set from cache (fast UX) then validate in background
         setEmployee(parsed);
+        setIsLoading(false);
+
+        // Background validation: verify employee still exists in DB
+        supabase
+          .from('employees')
+          .select('*')
+          .eq('id', parsed.id)
+          .single()
+          .then(({ data, error }) => {
+            if (error || !data) {
+              // Employee no longer valid in DB — clear session
+              setEmployee(null);
+              localStorage.removeItem(STORAGE_KEY);
+            } else {
+              // Refresh employee data from DB in case profile was updated
+              const freshEmp = data as Employee;
+              setEmployee(freshEmp);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(freshEmp));
+            }
+          });
       } catch {
         localStorage.removeItem(STORAGE_KEY);
+        setIsLoading(false);
       }
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const login = useCallback(async (nik: string): Promise<{ success: boolean; error?: string }> => {

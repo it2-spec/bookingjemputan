@@ -9,6 +9,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
+import { useBookingReminder } from './hooks/useBookingReminder';
 
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
@@ -52,10 +53,17 @@ const router = createBrowserRouter([
   },
 ]);
 
+// Activates reminder hook inside AuthProvider context
+function ReminderProvider() {
+  useBookingReminder();
+  return null;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ReminderProvider />
         <RouterProvider router={router} />
         <Toaster position="top-center" reverseOrder={false} />
       </AuthProvider>
