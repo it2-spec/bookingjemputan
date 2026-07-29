@@ -75,9 +75,9 @@ CREATE INDEX IF NOT EXISTS idx_employees_nik
 -- ============================================================
 
 INSERT INTO routes (route_name, departure_time) VALUES
-  ('Karawang Barat', '07:30:00'),
-  ('Karawang Timur', '07:30:00'),
-  ('Cikampek', '07:30:00')
+  ('Karawang Barat', '05:30:00'),
+  ('Karawang Timur', '05:30:00'),
+  ('Cikampek', '05:30:00')
 ON CONFLICT DO NOTHING;
 
 -- ============================================================
