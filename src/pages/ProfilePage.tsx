@@ -2,9 +2,9 @@
 // Profile Page
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   User,
   CreditCard,
@@ -16,7 +16,16 @@ import {
   Info,
   Shield,
   ChevronRight,
+  Bell,
+  BellOff,
+  BellRing,
+  CheckCircle2,
 } from 'lucide-react';
+import {
+  requestNotificationPermission,
+  showLocalNotification,
+  isPushSupported,
+} from '../lib/notificationService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Dialog } from '../components/ui/Dialog';
@@ -31,6 +40,30 @@ export default function ProfilePage() {
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains('dark')
   );
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const [notifSupported, setNotifSupported] = useState(false);
+  const [testSent, setTestSent] = useState(false);
+
+  useEffect(() => {
+    isPushSupported().then((supported) => {
+      setNotifSupported(supported);
+      if (supported) setNotifPermission(Notification.permission);
+    });
+  }, []);
+
+  const handleRequestPermission = async () => {
+    const perm = await requestNotificationPermission();
+    setNotifPermission(perm);
+  };
+
+  const handleTestNotification = async () => {
+    await showLocalNotification(
+      '🚌 Test Notifikasi Berhasil!',
+      `Hei ${employee?.name.split(' ')[0]}, notifikasi pengingat jemputan Anda sudah aktif dan berfungsi dengan baik.`,
+    );
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 3000);
+  };
 
   const toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
@@ -184,6 +217,112 @@ export default function ProfilePage() {
               />
             </div>
           </button>
+        </Card>
+      </motion.div>
+
+      {/* Notification Settings */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.32 }}
+        className="space-y-3"
+      >
+        <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wider">
+          Notifikasi
+        </h3>
+
+        <Card animate={false}>
+          <div className="space-y-4">
+            {/* Permission status */}
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                notifPermission === 'granted'
+                  ? 'bg-emerald-100 dark:bg-emerald-900/40'
+                  : notifPermission === 'denied'
+                  ? 'bg-red-100 dark:bg-red-900/40'
+                  : 'bg-amber-100 dark:bg-amber-900/40'
+              }`}>
+                {notifPermission === 'granted' ? (
+                  <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : notifPermission === 'denied' ? (
+                  <BellOff className="w-4 h-4 text-red-500" />
+                ) : (
+                  <BellRing className="w-4 h-4 text-amber-500" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                  Status Notifikasi
+                </p>
+                <p className={`text-xs ${
+                  notifPermission === 'granted'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : notifPermission === 'denied'
+                    ? 'text-red-500'
+                    : 'text-amber-600'
+                }`}>
+                  {!notifSupported
+                    ? 'Tidak didukung di browser ini'
+                    : notifPermission === 'granted'
+                    ? 'Aktif — pengingat akan dikirim jam 17:00–18:30'
+                    : notifPermission === 'denied'
+                    ? 'Ditolak — aktifkan di pengaturan browser'
+                    : 'Belum diizinkan'}
+                </p>
+              </div>
+            </div>
+
+            {/* Request permission button */}
+            {notifSupported && notifPermission === 'default' && (
+              <button
+                onClick={handleRequestPermission}
+                className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-95 text-white text-sm font-semibold transition-all duration-200"
+              >
+                Izinkan Notifikasi
+              </button>
+            )}
+
+            {/* Test notification button */}
+            {notifPermission === 'granted' && (
+              <>
+                <div className="border-b border-surface-100 dark:border-surface-800" />
+                <button
+                  onClick={handleTestNotification}
+                  className="flex items-center justify-between w-full cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center group-hover:bg-primary-200 dark:group-hover:bg-primary-900 transition-colors">
+                      <BellRing className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                        Kirim Notifikasi Test
+                      </p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500">
+                        Cek apakah notifikasi berfungsi
+                      </p>
+                    </div>
+                  </div>
+                  <AnimatePresence mode="wait">
+                    {testSent ? (
+                      <motion.div
+                        key="check"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                      >
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                      </motion.div>
+                    ) : (
+                      <motion.div key="chevron" initial={{ opacity: 1 }} animate={{ opacity: 1 }}>
+                        <ChevronRight className="w-5 h-5 text-surface-400" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </button>
+              </>
+            )}
+          </div>
         </Card>
       </motion.div>
 
