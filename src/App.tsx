@@ -14,6 +14,7 @@ import { useBookingReminder } from './hooks/useBookingReminder';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import BookingPage from './pages/BookingPage';
+import RoutesPage from './pages/RoutesPage';
 import HistoryPage from './pages/HistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'booking', element: <BookingPage /> },
+      { path: 'routes', element: <RoutesPage /> },
       { path: 'history', element: <HistoryPage /> },
       { path: 'profile', element: <ProfilePage /> },
     ],

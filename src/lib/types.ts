@@ -57,6 +57,44 @@ export interface RouteWithBookings extends Route {
   maxSeats: number;
 }
 
+// ----- Route Schedule / Timeline Types -----
+
+/**
+ * Arah perjalanan shuttle.
+ * - masuk:  pagi, dari area jemput menuju kantor (PT XYZ)
+ * - pulang: sore, rute dibalik dari kantor (PT XYZ) menuju area jemput
+ */
+export type RouteDirection = 'masuk' | 'pulang';
+
+/**
+ * A single pickup stop within a route schedule.
+ */
+export interface RouteStop {
+  name: string;
+  /** Estimated arrival time at this stop, 24h format 'HH:MM' (WIB) */
+  time: string;
+}
+
+/**
+ * Full schedule for a route: an ordered list of stops from the
+ * departure point (first) to the destination (last).
+ */
+export interface RouteSchedule {
+  routeName: string;
+  /** Emoji icon representing the route area */
+  icon: string;
+  /** Ordered stops. Index 0 = departure, last index = destination. */
+  stops: RouteStop[];
+}
+
+/**
+ * Live status of a stop relative to the current time.
+ * - passed:   current time is after the stop's estimated time
+ * - arriving: current time equals the stop's estimated time
+ * - upcoming: the vehicle has not reached the stop yet
+ */
+export type StopLiveStatus = 'passed' | 'arriving' | 'upcoming';
+
 // ----- UI State Types -----
 
 export type SeatStatus = 'available' | 'booked' | 'selected' | 'disabled';

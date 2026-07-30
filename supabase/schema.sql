@@ -146,6 +146,38 @@ CREATE POLICY "Allow public update bookings" ON bookings
 ALTER PUBLICATION supabase_realtime ADD TABLE bookings;
 
 -- ============================================================
+-- VIEW: Daftar Penumpang (untuk Export Excel / Power Query)
+-- ============================================================
+-- Menggabungkan bookings + employees + routes menjadi satu
+-- "tabel jadi" agar mudah dikonsumsi dari luar aplikasi,
+-- misalnya Excel Power Query (Get Data > From Web) atau tools BI.
+--
+-- VIEW ini tunduk pada RLS tabel dasarnya (yang saat ini
+-- mengizinkan SELECT publik), sehingga bisa dibaca memakai
+-- anon key yang sama dengan aplikasi.
+--
+-- Contoh endpoint (ganti <ref> dengan project reference Anda):
+--   https://<ref>.supabase.co/rest/v1/passenger_list
+--   https://<ref>.supabase.co/rest/v1/passenger_list?departure_date=eq.2026-07-21&status=eq.confirmed
+
+CREATE OR REPLACE VIEW passenger_list AS
+SELECT
+  b.id            AS booking_id,
+  e.nik,
+  e.name          AS employee_name,
+  e.department,
+  e.phone,
+  r.route_name,
+  b.seat_number,
+  b.vehicle_type,
+  b.departure_date,
+  b.status,
+  b.created_at    AS booked_at
+FROM bookings b
+LEFT JOIN employees e ON e.id = b.employee_id
+LEFT JOIN routes   r ON r.id = b.route_id;
+
+-- ============================================================
 -- PUSH SUBSCRIPTIONS (Web Push Notifications)
 -- ============================================================
 

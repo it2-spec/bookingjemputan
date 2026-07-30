@@ -4,12 +4,13 @@
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Home, Ticket, Clock, User } from 'lucide-react';
+import { Home, Ticket, Route, Clock, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/booking', label: 'Booking', icon: Ticket },
+  { path: '/routes', label: 'Rute', icon: Route },
   { path: '/history', label: 'Riwayat', icon: Clock },
   { path: '/profile', label: 'Profil', icon: User },
 ];
@@ -36,7 +37,7 @@ export function BottomNav() {
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                'relative flex flex-col items-center justify-center py-2 px-3 min-w-[64px] touch-target transition-colors duration-200 cursor-pointer',
+                'relative flex flex-col items-center justify-center py-2 px-2 min-w-[56px] touch-target transition-colors duration-200 cursor-pointer',
                 isActive
                   ? 'text-primary-600 dark:text-primary-400'
                   : 'text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300'

@@ -233,7 +233,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>07:30 WIB</span>
+                  <span>05:30 WIB</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
                   <Armchair className="w-3.5 h-3.5" />
@@ -336,7 +336,7 @@ export default function HomePage() {
                         {route.route_name}
                       </p>
                       <p className="text-xs text-surface-400 dark:text-surface-500">
-                        Berangkat 07:30 WIB
+                        Berangkat 05:30 WIB
                       </p>
                     </div>
                     <ChevronRight className="w-5 h-5 text-surface-300 dark:text-surface-600" />

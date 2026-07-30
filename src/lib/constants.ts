@@ -52,6 +52,7 @@ export const STATUS_LABELS: Record<string, string> = {
 export const NAV_ITEMS = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/booking', label: 'Booking', icon: 'ticket' },
+  { path: '/routes', label: 'Rute', icon: 'route' },
   { path: '/history', label: 'Riwayat', icon: 'history' },
   { path: '/profile', label: 'Profil', icon: 'user' },
 ] as const;
