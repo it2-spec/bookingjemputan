@@ -6,12 +6,15 @@ import type { VehicleType } from './types';
 import { BOOKING_DEADLINE_HOUR, VEHICLE_SEAT_CAPACITY, WIB_OFFSET } from './constants';
 
 /**
- * Determines the vehicle type based on confirmed passenger count.
+ * Determines the vehicle type based on confirmed passenger count or admin override.
  * 1-6  → Avanza
- * 7-12 → Elf Short
- * 13-16 → Elf Long
+ * 7-14 → Elf Short
+ * 15-16 → Elf Long
  */
-export function getVehicleType(confirmedCount: number): VehicleType {
+export function getVehicleType(confirmedCount: number, manualVehicleType?: string | null): VehicleType {
+  if (manualVehicleType && manualVehicleType !== 'Auto' && manualVehicleType !== '') {
+    return manualVehicleType as VehicleType;
+  }
   if (confirmedCount <= 6) return 'Avanza';
   if (confirmedCount <= 14) return 'Elf Short';
   return 'Elf Long';

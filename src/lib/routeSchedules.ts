@@ -21,12 +21,19 @@ import { getNowWIB } from './vehicleLogic';
  */
 export const ROUTE_SCHEDULES: RouteSchedule[] = [
   {
-    routeName: 'Karawang Barat',
-    icon: '🏭',
+    routeName: 'Karawang Barat 1 (Tanjung Pura, Kertabumi)',
+    icon: '🚗',
     stops: [
       { name: 'Alfamart Tanjung Pura', time: '05:30' },
       { name: 'Gempol', time: '05:35' },
       { name: 'Kertabumi', time: '05:45' },
+      { name: 'PT Sakae Riken Indonesia', time: '06:30' },
+    ],
+  },
+  {
+    routeName: 'Karawang Barat 2 (Dewi Sri, Tuparev, Galuh Mas)',
+    icon: '🚗',
+    stops: [
       { name: 'RS. Dewi Sri', time: '05:50' },
       { name: 'Mercure', time: '05:55' },
       { name: 'Galuh Mas', time: '06:00' },
@@ -71,7 +78,17 @@ export const ROUTE_SCHEDULES: RouteSchedule[] = [
 export function getScheduleByRouteName(
   routeName: string
 ): RouteSchedule | undefined {
-  return ROUTE_SCHEDULES.find((s) => s.routeName === routeName);
+  const exact = ROUTE_SCHEDULES.find((s) => s.routeName === routeName);
+  if (exact) return exact;
+
+  // Fuzzy fallback
+  if (routeName.includes('Karawang Barat 1')) {
+    return ROUTE_SCHEDULES.find((s) => s.routeName.includes('Karawang Barat 1'));
+  }
+  if (routeName.includes('Karawang Barat 2')) {
+    return ROUTE_SCHEDULES.find((s) => s.routeName.includes('Karawang Barat 2'));
+  }
+  return ROUTE_SCHEDULES.find((s) => routeName.toLowerCase().includes(s.routeName.toLowerCase()));
 }
 
 // ------------------------------------------------------------

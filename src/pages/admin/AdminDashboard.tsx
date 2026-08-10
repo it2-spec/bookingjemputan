@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import {
   Users,
@@ -37,9 +38,11 @@ import type { Route, VehicleType } from '../../lib/types';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(getTomorrowDate());
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<{ route: Route; vehicleType: VehicleType } | null>(null);
-  const { data: routes, isLoading: routesLoading } = useRoutes();
+  const [adminSelectedUnit, setAdminSelectedUnit] = useState<number>(1);
+  const { data: routes, isLoading: routesLoading, refetch: refetchRoutes } = useRoutes();
   const { data: bookings = [], isLoading: bookingsLoading, refetch } = useAdminBookings(selectedDate);
 
   useRealtimeBookings(null, selectedDate);
@@ -103,7 +106,7 @@ export default function AdminDashboard() {
       (b) => b.route_id === route.id && b.status === 'confirmed'
     );
     const confirmedCount = routeBookings.length;
-    const vehicleType = getVehicleType(confirmedCount);
+    const vehicleType = getVehicleType(confirmedCount, route.manual_vehicle_type);
     const maxSeats = getMaxSeats(vehicleType);
 
     return {
@@ -114,6 +117,26 @@ export default function AdminDashboard() {
       remainingSeats: maxSeats - confirmedCount,
     };
   });
+
+  const handleUpdateManualVehicle = async (routeId: string, vehicleSetting: string, unitCount: number = 1) => {
+    try {
+      const { error } = await supabase
+        .from('routes')
+        .update({
+          manual_vehicle_type: vehicleSetting,
+          unit_count: unitCount
+        })
+        .eq('id', routeId);
+
+      if (error) throw error;
+      toast.success('Pengaturan armada rute berhasil diperbarui! 🚌');
+      await queryClient.invalidateQueries({ queryKey: ['routes'] });
+      await refetchRoutes();
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengubah setting armada.');
+    }
+  };
 
   const totalConfirmed = bookings.filter((b) => b.status === 'confirmed').length;
 
@@ -262,9 +285,34 @@ export default function AdminDashboard() {
                       <h3 className="font-bold text-slate-900 text-base font-[family-name:var(--font-display)]">
                         {stat.route.route_name}
                       </h3>
-                      <p className="text-xs text-slate-600">
-                        Armada: <span className="font-semibold text-slate-800">{stat.vehicleType}</span>
-                      </p>
+                      <div className="mt-1 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-600 font-medium">Konfigurasi Armada:</span>
+                        <select
+                          value={
+                            stat.route.manual_vehicle_type
+                              ? `${stat.route.manual_vehicle_type}_${stat.route.unit_count || 1}`
+                              : 'Auto_1'
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'Auto_1') {
+                              handleUpdateManualVehicle(stat.route.id, 'Auto', 1);
+                            } else {
+                              const [vType, uCount] = val.split('_');
+                              handleUpdateManualVehicle(stat.route.id, vType, Number(uCount));
+                            }
+                          }}
+                          className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
+                        >
+                          <option value="Auto_1">⚡ Otomatis (Sistem Rekomendasi: {stat.vehicleType})</option>
+                          <option value="Avanza_1">🚗 1x Avanza (Max 6 Kursi)</option>
+                          <option value="Avanza_2">🚗🚗 2x Avanza (2 Unit Split - Max 12 Kursi)</option>
+                          <option value="Avanza_3">🚗🚗🚗 3x Avanza (3 Unit Split - Max 18 Kursi)</option>
+                          <option value="Elf Short_1">🚌 1x Elf Short (Max 14 Kursi)</option>
+                          <option value="Elf Short_2">🚌🚌 2x Elf Short (2 Unit Split - Max 28 Kursi)</option>
+                          <option value="Elf Long_1">🚐 1x Elf Long (Max 16 Kursi)</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -279,7 +327,10 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => setSelectedRouteForMap({ route: stat.route, vehicleType: stat.vehicleType })}
+                        onClick={() => {
+                          setAdminSelectedUnit(1);
+                          setSelectedRouteForMap({ route: stat.route, vehicleType: stat.vehicleType });
+                        }}
                       >
                         Visual Kursi 💺
                       </Button>
@@ -307,12 +358,49 @@ export default function AdminDashboard() {
       >
         <div className="space-y-4 py-2">
           {selectedRouteForMap && (
-            <SeatMap
-              vehicleType={selectedRouteForMap.vehicleType}
-              bookings={bookings.filter(b => b.route_id === selectedRouteForMap.route.id)}
-              selectedSeat={null}
-              onSeatSelect={() => {}}
-            />
+            <>
+              {/* Unit Selector (If Multi-Unit Enabled) */}
+              {(selectedRouteForMap.route.unit_count || 1) > 1 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <label className="text-xs font-bold text-slate-900 block">
+                    🚗 Pilih Unit Mobil untuk Dilihat:
+                  </label>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {[...Array(selectedRouteForMap.route.unit_count || 1)].map((_, idx) => {
+                      const uNum = idx + 1;
+                      const isSel = adminSelectedUnit === uNum;
+                      const unitBookingsCount = bookings.filter(
+                        (b) => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === uNum && b.status === 'confirmed'
+                      ).length;
+
+                      return (
+                        <button
+                          key={uNum}
+                          type="button"
+                          onClick={() => setAdminSelectedUnit(uNum)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
+                            isSel
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          Mobil Unit {uNum} ({unitBookingsCount} Penumpang)
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <SeatMap
+                vehicleType={selectedRouteForMap.vehicleType}
+                bookings={bookings.filter(
+                  (b) => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === adminSelectedUnit
+                )}
+                selectedSeat={null}
+                onSeatSelect={() => {}}
+              />
+            </>
           )}
           <p className="text-center text-xs text-slate-500">
             Hover / Tap pada nomor kursi merah untuk melihat nama penumpang.

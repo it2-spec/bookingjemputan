@@ -59,7 +59,9 @@ export interface RouteChangeRequest {
 export interface Route {
   id: string;
   route_name: string;
-  departure_time: string; // '05:30:00'
+  departure_time: string;
+  manual_vehicle_type?: string | null;
+  unit_count?: number | null;
   created_at: string;
 }
 
@@ -69,6 +71,7 @@ export interface Booking {
   route_id: string;
   departure_date: string; // 'YYYY-MM-DD'
   seat_number: number;
+  unit_number?: number;
   vehicle_type: VehicleType;
   pickup_point?: string | null;
   status: BookingStatus;

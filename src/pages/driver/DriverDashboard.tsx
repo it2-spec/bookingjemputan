@@ -9,9 +9,11 @@ import toast from 'react-hot-toast';
 
 // Coordinates for standard shuttle stops in Karawang area
 const STATIONS: Record<string, [number, number]> = {
-  'Karawang Barat': [-6.3039, 107.3009],
-  'Karawang Timur': [-6.3262, 107.3375],
-  'Cikampek': [-6.4085, 107.4589],
+  'Karawang Barat 1': [-6.276592879810661, 107.27324066001847],
+  'Karawang Barat 2': [-6.276592879810661, 107.27324066001847],
+  'Karawang Barat': [-6.276592879810661, 107.27324066001847],
+  'Karawang Timur': [-6.2830973278683935, 107.45715106568662],
+  'Cikampek': [-6.370380867733877, 107.37704813870378],
 };
 
 export function DriverDashboard() {
@@ -69,14 +71,17 @@ export function DriverDashboard() {
     async (lat: number, lng: number, statusVal = driverStatus) => {
       if (!employee) return;
       try {
-        await supabase.from('driver_locations').upsert({
-          driver_id: employee.id,
-          route_id: selectedRouteId || null,
-          latitude: lat,
-          longitude: lng,
-          status: statusVal,
-          updated_at: new Date().toISOString(),
-        });
+        await supabase.from('driver_locations').upsert(
+          {
+            driver_id: employee.id,
+            route_id: selectedRouteId || null,
+            latitude: lat,
+            longitude: lng,
+            status: statusVal,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'driver_id' }
+        );
       } catch (err) {
         console.log('Sync driver location info:', err);
       }

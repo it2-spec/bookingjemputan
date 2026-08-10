@@ -56,11 +56,11 @@ export function Dialog({
 
           {/* Dialog panel - slides up on mobile, scales in on desktop */}
           <motion.div
-            initial={{ opacity: 0, y: 100, scale: 0.95 }}
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-float max-h-[90vh] overflow-y-auto safe-bottom"
+            exit={{ opacity: 0, y: 20, scale: 0.98 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto safe-bottom"
           >
             {/* Handle bar (mobile) */}
             <div className="flex justify-center pt-3 sm:hidden">

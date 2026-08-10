@@ -104,9 +104,12 @@ export default function BookingPage() {
 
   const vehicleInfo = useVehicleType(bookings);
 
-  // Reset seat when route changes
+  const [selectedUnitNumber, setSelectedUnitNumber] = useState<number>(1);
+
+  // Reset seat & unit when route changes
   useEffect(() => {
     setSelectedSeat(null);
+    setSelectedUnitNumber(1);
   }, [selectedRouteId]);
 
   const handleSeatSelect = (seatNumber: number) => {
@@ -123,13 +126,14 @@ export default function BookingPage() {
 
     try {
       const confirmedCount = bookings.filter(b => b.status === 'confirmed').length + 1;
-      const vehicleType = getVehicleType(confirmedCount);
+      const vehicleType = getVehicleType(confirmedCount, selectedRoute?.manual_vehicle_type);
 
       await supabase.from('bookings').insert({
         employee_id: employee.id,
         route_id: selectedRouteId,
         departure_date: tomorrowDate,
         seat_number: selectedSeat,
+        unit_number: selectedUnitNumber,
         vehicle_type: vehicleType,
         pickup_point: selectedPickupPoint,
         status: 'confirmed',
@@ -305,7 +309,44 @@ export default function BookingPage() {
               />
             )}
 
-            {/* Seat map */}
+            {/* Unit Selector Tab (If Multi-Unit Enabled by Admin) */}
+            {selectedRoute?.unit_count && selectedRoute.unit_count > 1 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl space-y-2">
+                <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                  🚗 Pilih Unit Armada Rute {selectedRoute.route_name}:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[...Array(selectedRoute.unit_count)].map((_, idx) => {
+                    const uNum = idx + 1;
+                    const isSelected = selectedUnitNumber === uNum;
+                    const uBookingsCount = bookings.filter((b) => (b.unit_number || 1) === uNum && b.status === 'confirmed').length;
+
+                    return (
+                      <button
+                        key={uNum}
+                        type="button"
+                        onClick={() => {
+                          setSelectedUnitNumber(uNum);
+                          setSelectedSeat(null);
+                        }}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                            : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div>Mobil Unit {uNum}</div>
+                        <div className={`text-[10px] font-normal mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
+                          Terisi {uBookingsCount} Kursi
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Seat map filtered by selected unit */}
             {bookingsLoading ? (
               <SeatMapSkeleton />
             ) : vehicleInfo.isFull ? (
@@ -316,8 +357,8 @@ export default function BookingPage() {
               </div>
             ) : (
               <SeatMap
-                vehicleType={vehicleInfo.vehicleType}
-                bookings={bookings}
+                vehicleType={getVehicleType(bookings.length, selectedRoute?.manual_vehicle_type)}
+                bookings={bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber)}
                 selectedSeat={selectedSeat}
                 onSeatSelect={handleSeatSelect}
                 currentEmployeeId={employee?.id}

@@ -17,9 +17,11 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
 const DEFAULT_STATIONS: Record<string, [number, number]> = {
-  'Karawang Barat': [-6.3039, 107.3009],
-  'Karawang Timur': [-6.3262, 107.3375],
-  'Cikampek': [-6.4085, 107.4589],
+  'Karawang Barat 1': [-6.276592879810661, 107.27324066001847],
+  'Karawang Barat 2': [-6.276592879810661, 107.27324066001847],
+  'Karawang Barat': [-6.276592879810661, 107.27324066001847],
+  'Karawang Timur': [-6.2830973278683935, 107.45715106568662],
+  'Cikampek': [-6.370380867733877, 107.37704813870378],
 };
 
 export default function SuperAdminDashboard() {

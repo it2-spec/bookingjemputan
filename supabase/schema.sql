@@ -158,9 +158,18 @@ ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 -- we allow public read access and control writes via application logic.
 -- For production, consider implementing Supabase Auth properly.
 
--- Employees: anyone can read (for login lookup)
+-- Employees: anyone can read/insert/update/delete (custom auth NIK-based)
 CREATE POLICY "Allow public read employees" ON employees
   FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert employees" ON employees
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update employees" ON employees
+  FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public delete employees" ON employees
+  FOR DELETE USING (true);
 
 -- Routes: anyone can read
 CREATE POLICY "Allow public read routes" ON routes

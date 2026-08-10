@@ -21,7 +21,6 @@ export function useRoutes() {
       if (error) throw error;
       return (data || []) as Route[];
     },
-    staleTime: 1000 * 60 * 60, // Routes rarely change, cache for 1 hour
   });
 }
 
