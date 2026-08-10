@@ -1,7 +1,3 @@
-// ============================================================
-// Profile Page
-// ============================================================
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,6 +16,11 @@ import {
   BellOff,
   BellRing,
   CheckCircle2,
+  MapPin,
+  Clock,
+  Edit3,
+  Send,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   requestNotificationPermission,
@@ -33,8 +34,11 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Dialog } from '../components/ui/Dialog';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import type { Route, RouteChangeRequest } from '../lib/types';
 import { APP_NAME, APP_VERSION } from '../lib/constants';
 import { getInitials } from '../lib/utils';
+import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
   const { employee, logout } = useAuth();
@@ -49,6 +53,78 @@ export default function ProfilePage() {
   const [pushStatus, setPushStatus] = useState<'subscribed' | 'granted' | 'default' | 'denied'>('default');
   const [pushLoading, setPushLoading] = useState(false);
 
+  // Route change request state
+  const [allRoutes, setAllRoutes] = useState<Route[]>([]);
+  const [currentRoute, setCurrentRoute] = useState<Route | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<RouteChangeRequest | null>(null);
+  const [showRouteChangeDialog, setShowRouteChangeDialog] = useState(false);
+  const [selectedNewRouteId, setSelectedNewRouteId] = useState<string>('');
+  const [changeReason, setChangeReason] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
+  const fetchRouteInfo = async () => {
+    if (!employee) return;
+    try {
+      const { data: rData } = await supabase.from('routes').select('*');
+      if (rData) {
+        setAllRoutes(rData as Route[]);
+        if (employee.assigned_route_id) {
+          const match = rData.find((r) => r.id === employee.assigned_route_id);
+          if (match) setCurrentRoute(match as Route);
+        } else {
+          // Default default route if none explicitly assigned yet
+          const karawangBarat = rData.find((r) => r.route_name.toLowerCase().includes('karawang barat'));
+          if (karawangBarat) setCurrentRoute(karawangBarat as Route);
+        }
+      }
+
+      // Check pending request
+      const { data: reqData } = await supabase
+        .from('route_change_requests')
+        .select('*, requested_route:routes(route_name)')
+        .eq('employee_id', employee.id)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (reqData) {
+        setPendingRequest(reqData as any);
+      } else {
+        setPendingRequest(null);
+      }
+    } catch (e) {
+      console.log('Error fetching route info:', e);
+    }
+  };
+
+  const handleCreateRouteChangeRequest = async () => {
+    if (!employee || !selectedNewRouteId) {
+      toast.error('Pilih rute tujuan terlebih dahulu');
+      return;
+    }
+    setSubmittingRequest(true);
+    try {
+      const { error } = await supabase.from('route_change_requests').insert({
+        employee_id: employee.id,
+        current_route_id: currentRoute?.id || null,
+        requested_route_id: selectedNewRouteId,
+        reason: changeReason || 'Pengajuan via aplikasi',
+        status: 'pending',
+      });
+
+      if (error) throw error;
+
+      toast.success('Pengajuan perubahan rute berhasil dikirim! Menunggu approval admin.', {
+        duration: 4000,
+      });
+      setShowRouteChangeDialog(false);
+      fetchRouteInfo();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengajukan perubahan rute');
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
   const refreshPushStatus = async () => {
     const supported = await isPushSupported();
     setNotifSupported(supported);
@@ -60,8 +136,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     refreshPushStatus();
+    fetchRouteInfo();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [employee?.id]);
 
   const handleRequestPermission = async () => {
     const perm = await requestNotificationPermission();
@@ -178,6 +255,55 @@ export default function ProfilePage() {
               value={employee.phone || '-'}
             />
           </div>
+        </Card>
+      </motion.div>
+
+      {/* Rute Jemputan Terdaftar Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="space-y-3"
+      >
+        <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wider">
+          Rute Jemputan Terdaftar
+        </h3>
+        <Card className="space-y-4 border-l-4 border-l-primary-600">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                <span className="text-base font-bold text-surface-900 dark:text-surface-100">
+                  {currentRoute?.route_name || 'Karawang Barat'}
+                </span>
+              </div>
+              <p className="text-xs text-surface-500 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" /> Jam Keberangkatan: {currentRoute?.departure_time || '05:30:00'} WIB
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowRouteChangeDialog(true)}
+              className="px-3 py-1.5 rounded-xl bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800 text-xs font-semibold hover:bg-primary-100 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" /> Ubah Rute
+            </button>
+          </div>
+
+          {pendingRequest ? (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl space-y-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="w-4 h-4" /> Pengajuan Perubahan Rute Menunggu Approval Admin
+              </div>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                Meminta pindah rute ke <strong>{(pendingRequest as any)?.requested_route?.route_name || 'Rute Baru'}</strong>. Silakan hubungi admin untuk mempercepat proses persetujuan.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-surface-500">
+              * Sesuai ketentuan, Anda hanya dapat memesan tiket shuttle pada rute yang telah disetujui di profil Anda.
+            </p>
+          )}
         </Card>
       </motion.div>
 
@@ -443,6 +569,83 @@ export default function ProfilePage() {
             </Button>
             <Button variant="danger" fullWidth onClick={handleLogout}>
               Ya, Keluar
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Route Change Request Dialog */}
+      <Dialog
+        isOpen={showRouteChangeDialog}
+        onClose={() => setShowRouteChangeDialog(false)}
+        title="Ajukan Perubahan Rute Jemputan"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-surface-600 dark:text-surface-400">
+            Pilih rute jemputan baru yang Anda inginkan. Pengajuan ini membutuhkan verifikasi dan approval dari Admin sebelum berlaku.
+          </p>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Rute Saat Ini
+            </label>
+            <input
+              type="text"
+              disabled
+              value={currentRoute?.route_name || 'Karawang Barat'}
+              className="w-full px-3 py-2 text-sm bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-500 cursor-not-allowed"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Pilih Rute Baru Target <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedNewRouteId}
+              onChange={(e) => setSelectedNewRouteId(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">-- Pilih Rute Target --</option>
+              {allRoutes
+                .filter((r) => r.id !== currentRoute?.id)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.route_name} ({r.departure_time} WIB)
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Alasan Perubahan Rute (Opsional)
+            </label>
+            <textarea
+              rows={2}
+              value={changeReason}
+              onChange={(e) => setChangeReason(e.target.value)}
+              placeholder="Contoh: Pindah domisili tempat tinggal..."
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => setShowRouteChangeDialog(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="primary"
+              fullWidth
+              disabled={!selectedNewRouteId || submittingRequest}
+              onClick={handleCreateRouteChangeRequest}
+              icon={<Send className="w-4 h-4" />}
+            >
+              {submittingRequest ? 'Mengirim...' : 'Kirim Pengajuan'}
             </Button>
           </div>
         </div>

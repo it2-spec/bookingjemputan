@@ -51,7 +51,7 @@ export function BookingInfoCard({
           <InfoItem
             icon={<Clock className="w-3.5 h-3.5" />}
             label="Keberangkatan"
-            value="07:30 WIB"
+            value="05:30 WIB"
           />
           <InfoItem
             icon={<Bus className="w-3.5 h-3.5" />}

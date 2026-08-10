@@ -31,9 +31,18 @@ export default function LoginPage() {
     const result = await login(nik);
     setIsLoading(false);
 
-    if (result.success) {
-      toast.success('Login berhasil! Selamat datang.');
-      navigate('/', { replace: true });
+    if (result.success && result.employee) {
+      const role = result.employee.role;
+      toast.success(`Login berhasil! Selamat datang, ${result.employee.name}.`);
+      if (role === 'superadmin') {
+        navigate('/superadmin', { replace: true });
+      } else if (role === 'driver') {
+        navigate('/driver', { replace: true });
+      } else if (role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     } else {
       setError(result.error || 'Login gagal');
       toast.error(result.error || 'Login gagal');

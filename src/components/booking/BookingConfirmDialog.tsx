@@ -65,7 +65,7 @@ export function BookingConfirmDialog({
           <DetailRow
             icon={<Clock className="w-4 h-4" />}
             label="Keberangkatan"
-            value="07:30 WIB"
+            value="05:30 WIB"
           />
           <DetailRow
             icon={<Armchair className="w-4 h-4" />}

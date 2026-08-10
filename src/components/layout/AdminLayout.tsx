@@ -11,6 +11,7 @@ import { cn } from '../../lib/utils';
 const adminNavItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { path: '/admin/passengers', label: 'Penumpang', icon: Users, exact: false },
+  { path: '/admin/approvals', label: 'Approval Rute', icon: Shield, exact: false },
 ];
 
 export function AdminLayout() {
@@ -20,7 +21,7 @@ export function AdminLayout() {
 
   if (isLoading) return <LoadingScreen />;
 
-  if (!employee || employee.role !== 'admin') {
+  if (!employee || (employee.role !== 'admin' && employee.role !== 'superadmin')) {
     return <Navigate to="/" replace />;
   }
 

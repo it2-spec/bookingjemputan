@@ -8,7 +8,7 @@ export type VehicleType = 'Avanza' | 'Elf Short' | 'Elf Long';
 
 export type BookingStatus = 'confirmed' | 'cancelled' | 'closed';
 
-export type UserRole = 'employee' | 'admin';
+export type UserRole = 'employee' | 'driver' | 'admin' | 'superadmin';
 
 // ----- Database Row Types -----
 
@@ -19,13 +19,46 @@ export interface Employee {
   department: string;
   phone: string | null;
   role: UserRole;
+  assigned_route_id?: string | null;
+  assigned_route_name?: string | null;
+  route_change_status?: 'pending' | 'none';
   created_at: string;
+}
+
+export interface DriverLocation {
+  id: string;
+  driver_id: string;
+  driver_name?: string;
+  route_id?: string | null;
+  route_name?: string | null;
+  latitude: number;
+  longitude: number;
+  status: 'active' | 'heading_to_pickup' | 'in_transit' | 'completed' | 'offline';
+  speed?: number;
+  updated_at: string;
+}
+
+export interface RouteChangeRequest {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  nik?: string;
+  department?: string;
+  current_route_id: string | null;
+  current_route_name?: string | null;
+  requested_route_id: string;
+  requested_route_name?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
 }
 
 export interface Route {
   id: string;
   route_name: string;
-  departure_time: string; // '07:30:00'
+  departure_time: string; // '05:30:00'
   created_at: string;
 }
 
@@ -56,44 +89,6 @@ export interface RouteWithBookings extends Route {
   remainingSeats: number;
   maxSeats: number;
 }
-
-// ----- Route Schedule / Timeline Types -----
-
-/**
- * Arah perjalanan shuttle.
- * - masuk:  pagi, dari area jemput menuju kantor (PT XYZ)
- * - pulang: sore, rute dibalik dari kantor (PT XYZ) menuju area jemput
- */
-export type RouteDirection = 'masuk' | 'pulang';
-
-/**
- * A single pickup stop within a route schedule.
- */
-export interface RouteStop {
-  name: string;
-  /** Estimated arrival time at this stop, 24h format 'HH:MM' (WIB) */
-  time: string;
-}
-
-/**
- * Full schedule for a route: an ordered list of stops from the
- * departure point (first) to the destination (last).
- */
-export interface RouteSchedule {
-  routeName: string;
-  /** Emoji icon representing the route area */
-  icon: string;
-  /** Ordered stops. Index 0 = departure, last index = destination. */
-  stops: RouteStop[];
-}
-
-/**
- * Live status of a stop relative to the current time.
- * - passed:   current time is after the stop's estimated time
- * - arriving: current time equals the stop's estimated time
- * - upcoming: the vehicle has not reached the stop yet
- */
-export type StopLiveStatus = 'passed' | 'arriving' | 'upcoming';
 
 // ----- UI State Types -----
 
@@ -147,4 +142,29 @@ export interface DashboardStats {
     remaining: number;
     total: number;
   }[];
+}
+
+// ----- Route Schedule & Timeline Types -----
+
+export type RouteDirection = 'masuk' | 'pulang';
+
+export type StopLiveStatus = 'passed' | 'next' | 'upcoming' | 'arriving';
+
+export interface RouteStop {
+  id?: string;
+  name: string;
+  time: string; // '05:30'
+  estimatedTime?: string;
+  address?: string;
+  isPickupPoint?: boolean;
+}
+
+export interface RouteSchedule {
+  routeName: string;
+  icon?: string;
+  description?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  direction?: RouteDirection;
+  stops: RouteStop[];
 }

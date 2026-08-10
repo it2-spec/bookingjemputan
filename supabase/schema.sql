@@ -17,8 +17,38 @@ CREATE TABLE IF NOT EXISTS employees (
   name VARCHAR(100) NOT NULL,
   department VARCHAR(100) NOT NULL,
   phone VARCHAR(20),
-  role VARCHAR(20) DEFAULT 'employee' CHECK (role IN ('employee', 'admin')),
+  role VARCHAR(20) DEFAULT 'employee' CHECK (role IN ('employee', 'driver', 'admin', 'superadmin')),
+  assigned_route_id UUID REFERENCES routes(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Migration query for existing databases: Drop old constraint & add new roles ('driver', 'superadmin')
+ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_role_check;
+ALTER TABLE employees ADD CONSTRAINT employees_role_check CHECK (role IN ('employee', 'driver', 'admin', 'superadmin'));
+
+-- Driver locations table (Realtime GPS / Map tracking)
+CREATE TABLE IF NOT EXISTS driver_locations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  driver_id UUID REFERENCES employees(id) ON DELETE CASCADE NOT NULL,
+  route_id UUID REFERENCES routes(id) ON DELETE SET NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  status VARCHAR(30) DEFAULT 'active' CHECK (status IN ('active', 'heading_to_pickup', 'in_transit', 'completed', 'offline')),
+  speed DOUBLE PRECISION DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Route change requests table (Approval by admin/superadmin)
+CREATE TABLE IF NOT EXISTS route_change_requests (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  employee_id UUID REFERENCES employees(id) ON DELETE CASCADE NOT NULL,
+  current_route_id UUID REFERENCES routes(id) ON DELETE SET NULL,
+  requested_route_id UUID REFERENCES routes(id) ON DELETE CASCADE NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by UUID REFERENCES employees(id) ON DELETE SET NULL
 );
 
 -- Routes table
@@ -85,6 +115,8 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 
 INSERT INTO employees (nik, name, department, phone, role) VALUES
+  ('9999', 'Superadmin Management', 'Executive', '081100009999', 'superadmin'),
+  ('2001', 'Pak Bambang (Driver Utama)', 'Fleet Operations', '081299992001', 'driver'),
   ('1001', 'Ahmad Fauzi', 'Engineering', '081234567890', 'admin'),
   ('1002', 'Siti Nurhaliza', 'Human Resources', '081234567891', 'employee'),
   ('1003', 'Budi Santoso', 'Finance', '081234567892', 'employee'),

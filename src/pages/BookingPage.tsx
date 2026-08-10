@@ -46,6 +46,20 @@ export default function BookingPage() {
   const bookingOpen = isBookingOpen();
 
   const { data: routes, isLoading: routesLoading } = useRoutes();
+
+  // Auto lock to assigned route if passenger has one
+  useEffect(() => {
+    if (routes && routes.length > 0 && !selectedRouteId) {
+      if (employee?.assigned_route_id) {
+        setSelectedRouteId(employee.assigned_route_id);
+      } else {
+        // Default to Karawang Barat
+        const kb = routes.find((r) => r.route_name.toLowerCase().includes('karawang barat'));
+        if (kb) setSelectedRouteId(kb.id);
+      }
+    }
+  }, [routes, employee?.assigned_route_id, selectedRouteId]);
+
   const { data: bookings = [], isLoading: bookingsLoading } = useRouteBookings(
     selectedRouteId,
     tomorrowDate
@@ -207,6 +221,19 @@ export default function BookingPage() {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-5"
           >
+            {/* Route Restriction Banner */}
+            <div className="bg-primary-50 dark:bg-primary-950/40 p-3 rounded-xl border border-primary-200 dark:border-primary-800 flex items-center justify-between text-xs text-primary-800 dark:text-primary-300">
+              <div>
+                <span className="font-bold">📍 Rute Terdaftar Anda:</span> {selectedRoute?.route_name || 'Karawang Barat'}
+              </div>
+              <button
+                onClick={() => navigate('/profile')}
+                className="text-[11px] underline font-semibold text-primary-700 dark:text-primary-400 hover:text-primary-900 cursor-pointer"
+              >
+                Ubah di Profil
+              </button>
+            </div>
+
             {/* Booking info */}
             {selectedRoute && (
               <BookingInfoCard

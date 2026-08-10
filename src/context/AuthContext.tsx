@@ -17,7 +17,7 @@ interface AuthContextType {
   employee: Employee | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (nik: string) => Promise<{ success: boolean; error?: string }>;
+  login: (nik: string) => Promise<{ success: boolean; employee?: Employee; error?: string }>;
   logout: () => void;
 }
 
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (nik: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (nik: string): Promise<{ success: boolean; employee?: Employee; error?: string }> => {
     try {
       const { data, error } = await supabase
         .from('employees')
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setEmployee(emp);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(emp));
 
-      return { success: true };
+      return { success: true, employee: emp };
     } catch {
       return {
         success: false,

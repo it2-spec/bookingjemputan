@@ -7,8 +7,8 @@ import type { VehicleType } from './types';
 /** Booking closes at 20:00 WIB every day */
 export const BOOKING_DEADLINE_HOUR = 20;
 
-/** All shuttles depart at 07:30 WIB */
-export const DEPARTURE_TIME = '07:30';
+/** All shuttles depart at 05:30 WIB */
+export const DEPARTURE_TIME = '05:30';
 
 /** Maximum total capacity across all vehicle types */
 export const MAX_CAPACITY = 18;
@@ -52,7 +52,6 @@ export const STATUS_LABELS: Record<string, string> = {
 export const NAV_ITEMS = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/booking', label: 'Booking', icon: 'ticket' },
-  { path: '/routes', label: 'Rute', icon: 'route' },
   { path: '/history', label: 'Riwayat', icon: 'history' },
   { path: '/profile', label: 'Profil', icon: 'user' },
 ] as const;

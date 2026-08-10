@@ -11,6 +11,8 @@ import {
   XCircle,
   Bus,
   MapPin,
+  UserPlus,
+  ShieldCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card } from '../../components/ui/Card';
@@ -19,12 +21,13 @@ import { Badge } from '../../components/ui/Badge';
 import { Dialog } from '../../components/ui/Dialog';
 import { useAdminBookings, useCancelBooking } from '../../hooks/useBooking';
 import { useRoutes } from '../../hooks/useRoutes';
+import { supabase } from '../../lib/supabase';
 import {
   getTomorrowDate,
   formatDateIndonesian,
   formatTimeWIB,
 } from '../../lib/vehicleLogic';
-import type { Booking } from '../../lib/types';
+import type { Booking, UserRole } from '../../lib/types';
 import toast from 'react-hot-toast';
 
 export default function AdminPassengerList() {
@@ -36,6 +39,15 @@ export default function AdminPassengerList() {
   const [selectedRoute, setSelectedRoute] = useState(routeParam || 'all');
   const [searchTerm, setSearchTerm] = useState('');
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+
+  // New User Form State
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newNik, setNewNik] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newDepartment, setNewDepartment] = useState('Executive');
+  const [newPhone, setNewPhone] = useState('');
+  const [newRole, setNewRole] = useState<UserRole>('superadmin');
+  const [savingUser, setSavingUser] = useState(false);
 
   const { data: routes } = useRoutes();
   const { data: bookings = [], isLoading, refetch } = useAdminBookings(selectedDate);
@@ -96,27 +108,67 @@ export default function AdminPassengerList() {
     }
   };
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNik.trim() || !newName.trim()) {
+      toast.error('NIK dan Nama wajib diisi');
+      return;
+    }
+    setSavingUser(true);
+    try {
+      const { error } = await supabase.from('employees').insert({
+        nik: newNik.trim(),
+        name: newName.trim(),
+        department: newDepartment.trim(),
+        phone: newPhone.trim() || null,
+        role: newRole,
+      });
+
+      if (error) throw error;
+
+      toast.success(`User ${newName} dengan role ${newRole} berhasil dibuat!`);
+      setShowAddUserModal(false);
+      setNewNik('');
+      setNewName('');
+      setNewPhone('');
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal membuat user baru');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header & Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
-            Daftar Penumpang
+            Daftar Penumpang & Manajemen User
           </h1>
           <p className="text-sm text-surface-500 dark:text-surface-400">
             {formatDateIndonesian(selectedDate)}
           </p>
         </div>
 
-        <Button
-          onClick={handleExportExcel}
-          variant="outline"
-          size="sm"
-          icon={<Download className="w-4 h-4 text-emerald-600" />}
-        >
-          Export Excel (.xlsx)
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowAddUserModal(true)}
+            variant="primary"
+            size="sm"
+            icon={<UserPlus className="w-4 h-4" />}
+          >
+            + Tambah User Baru
+          </Button>
+          <Button
+            onClick={handleExportExcel}
+            variant="outline"
+            size="sm"
+            icon={<Download className="w-4 h-4 text-emerald-600" />}
+          >
+            Export Excel (.xlsx)
+          </Button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}
@@ -282,6 +334,105 @@ export default function AdminPassengerList() {
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* Add User Modal */}
+      <Dialog
+        isOpen={showAddUserModal}
+        onClose={() => setShowAddUserModal(false)}
+        title="Tambah Pengguna / Superadmin Baru"
+      >
+        <form onSubmit={handleCreateUser} className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              NIK (Nomor Induk Karyawan) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Contoh: 9999 / 8888"
+              value={newNik}
+              onChange={(e) => setNewNik(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Nama Lengkap <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Contoh: Superadmin Utama"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Departemen
+            </label>
+            <input
+              type="text"
+              placeholder="Contoh: Executive / IT / Operations"
+              value={newDepartment}
+              onChange={(e) => setNewDepartment(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              No. Telepon / WhatsApp
+            </label>
+            <input
+              type="text"
+              placeholder="Contoh: 081234567890"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-surface-700 dark:text-surface-300 block mb-1">
+              Hak Akses / Role User <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value as UserRole)}
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold"
+            >
+              <option value="superadmin">👑 Superadmin (Desktop Webview & Full Control)</option>
+              <option value="admin">🛡️ Admin (Dashboard Operasional)</option>
+              <option value="driver">🚌 Driver (Console Live Map GPS)</option>
+              <option value="employee">👤 Karyawan / Penumpang</option>
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              onClick={() => setShowAddUserModal(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              fullWidth
+              isLoading={savingUser}
+              icon={<ShieldCheck className="w-4 h-4" />}
+            >
+              Simpan User
+            </Button>
+          </div>
+        </form>
       </Dialog>
     </div>
   );
