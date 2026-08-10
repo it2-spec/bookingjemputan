@@ -15,12 +15,12 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 const variantStyles = {
   default:
-    'bg-white dark:bg-surface-900 shadow-card border border-surface-100 dark:border-surface-800',
+    'bg-white shadow-card border border-slate-100',
   elevated:
-    'bg-white dark:bg-surface-900 shadow-float border border-surface-100 dark:border-surface-800',
-  glass: 'glass border border-white/20 dark:border-surface-700/50',
+    'bg-white shadow-float border border-slate-100',
+  glass: 'glass border border-white/20',
   outlined:
-    'bg-transparent border-2 border-surface-200 dark:border-surface-700',
+    'bg-transparent border-2 border-slate-200',
 };
 
 const paddingStyles = {

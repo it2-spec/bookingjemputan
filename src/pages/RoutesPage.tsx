@@ -15,10 +15,12 @@ import { Bus, Sunrise, Sunset } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { RouteTimelineCard } from '../components/shared/RouteTimelineCard';
 import { useRoutes } from '../hooks/useRoutes';
+import { useAuth } from '../context/AuthContext';
 import { isBookingOpen, getNowWIB } from '../lib/vehicleLogic';
 import { getSchedulesForDirection, getNowMinutes } from '../lib/routeSchedules';
 import { padZero, cn } from '../lib/utils';
 import type { RouteDirection } from '../lib/types';
+import toast from 'react-hot-toast';
 
 const STORAGE_KEY = 'shuttle_pickup_selection_v1';
 
@@ -60,6 +62,7 @@ function formatClock(date: Date): string {
 
 export default function RoutesPage() {
   const navigate = useNavigate();
+  const { employee } = useAuth();
   const { data: dbRoutes } = useRoutes();
   const bookingOpen = isBookingOpen();
 
@@ -109,10 +112,10 @@ export default function RoutesPage() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+        <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
           Rute Jemputan
         </h1>
-        <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+        <p className="text-xs text-slate-600 mt-0.5">
           Jadwal & estimasi tiba kendaraan di setiap titik jemput
         </p>
       </motion.div>
@@ -123,7 +126,7 @@ export default function RoutesPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.03 }}
       >
-        <div className="grid grid-cols-2 gap-1 bg-surface-100 dark:bg-surface-800 rounded-xl p-1">
+        <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1">
           {DIRECTION_OPTIONS.map((opt) => {
             const active = direction === opt.value;
             const Icon = opt.icon;
@@ -136,14 +139,14 @@ export default function RoutesPage() {
                 className={cn(
                   'relative rounded-[10px] px-3 py-2 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
                   active
-                    ? 'text-primary-700 dark:text-primary-300'
-                    : 'text-surface-500 dark:text-surface-400'
+                    ? 'text-primary-700'
+                    : 'text-slate-600'
                 )}
               >
                 {active && (
                   <motion.div
                     layoutId="direction-toggle"
-                    className="absolute inset-0 bg-white dark:bg-surface-900 rounded-[10px] shadow-card"
+                    className="absolute inset-0 bg-white rounded-[10px] shadow-card"
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
                 )}
@@ -154,8 +157,8 @@ export default function RoutesPage() {
                     className={cn(
                       'text-[11px] font-mono tabular-nums',
                       active
-                        ? 'text-primary-500 dark:text-primary-400'
-                        : 'text-surface-400 dark:text-surface-500'
+                        ? 'text-primary-500'
+                        : 'text-slate-500'
                     )}
                   >
                     {opt.time}
@@ -205,7 +208,7 @@ export default function RoutesPage() {
         transition={{ delay: 0.1 }}
       >
         <Card animate={false} padding="sm">
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-surface-500 dark:text-surface-400">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-slate-600">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-primary-600" />
               Sudah dilewati
@@ -231,6 +234,10 @@ export default function RoutesPage() {
         {schedules.map((schedule, i) => {
           const dbRouteId = routeMap.get(schedule.routeName);
           const canBook = bookingOpen && !!dbRouteId;
+          const isAssigned = employee?.assigned_route_id
+            ? employee.assigned_route_id === dbRouteId
+            : schedule.routeName.toLowerCase().includes('karawang barat');
+
           return (
             <RouteTimelineCard
               key={schedule.routeName}
@@ -239,7 +246,20 @@ export default function RoutesPage() {
               selectedStopName={selected[schedule.routeName] ?? null}
               onSelectStop={(name) => handleSelectStop(schedule.routeName, name)}
               onBook={
-                canBook ? () => navigate(`/booking?route=${dbRouteId}`) : undefined
+                canBook
+                  ? () => {
+                      if (isAssigned) {
+                        navigate(`/booking?route=${dbRouteId}`);
+                      } else {
+                        toast.error(
+                          `Anda terdaftar untuk rute ${
+                            employee?.assigned_route_name || 'Karawang Barat'
+                          }. Silakan ubah rute di Profil jika ingin pindah rute.`,
+                          { duration: 4000 }
+                        );
+                      }
+                    }
+                  : undefined
               }
               delay={0.15 + i * 0.08}
             />
@@ -248,7 +268,7 @@ export default function RoutesPage() {
       </div>
 
       {/* Catatan */}
-      <p className="text-center text-[11px] text-surface-400 dark:text-surface-500 px-4">
+      <p className="text-center text-[11px] text-slate-600 px-4">
         Estimasi waktu bersifat perkiraan dan dapat berubah tergantung kondisi
         lalu lintas.
       </p>

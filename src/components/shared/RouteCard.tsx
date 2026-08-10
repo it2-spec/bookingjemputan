@@ -57,8 +57,8 @@ export function RouteCard({
             className={cn(
               'w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0',
               isSelected
-                ? 'bg-primary-100 dark:bg-primary-900/40'
-                : 'bg-surface-100 dark:bg-surface-800'
+                ? 'bg-primary-100'
+                : 'bg-slate-100'
             )}
           >
             {routeIcons[routeName] || '🚌'}
@@ -66,16 +66,16 @@ export function RouteCard({
 
           {/* Route info */}
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+            <h3 className="font-semibold text-slate-900 font-[family-name:var(--font-display)]">
               {routeName}
             </h3>
             <div className="flex items-center gap-3 mt-1">
-              <span className="flex items-center gap-1 text-xs text-surface-500 dark:text-surface-400">
+              <span className="flex items-center gap-1 text-xs text-slate-600">
                 <Clock className="w-3.5 h-3.5" />
                 {departureTime} WIB
               </span>
               {confirmedCount !== undefined && maxSeats !== undefined && (
-                <span className="flex items-center gap-1 text-xs text-surface-500 dark:text-surface-400">
+                <span className="flex items-center gap-1 text-xs text-slate-600">
                   <Users className="w-3.5 h-3.5" />
                   {confirmedCount}/{maxSeats}
                 </span>
@@ -99,7 +99,7 @@ export function RouteCard({
               </Badge>
             ) : null}
             {!isFull && (
-              <ChevronRight className="w-5 h-5 text-surface-300 dark:text-surface-600" />
+              <ChevronRight className="w-5 h-5 text-slate-400" />
             )}
           </div>
         </div>

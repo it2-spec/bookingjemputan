@@ -19,12 +19,14 @@ CREATE TABLE IF NOT EXISTS employees (
   phone VARCHAR(20),
   role VARCHAR(20) DEFAULT 'employee' CHECK (role IN ('employee', 'driver', 'admin', 'superadmin')),
   assigned_route_id UUID REFERENCES routes(id) ON DELETE SET NULL,
+  default_pickup_point VARCHAR(100),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Migration query for existing databases: Drop old constraint & add new roles ('driver', 'superadmin')
 ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_role_check;
 ALTER TABLE employees ADD CONSTRAINT employees_role_check CHECK (role IN ('employee', 'driver', 'admin', 'superadmin'));
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS default_pickup_point VARCHAR(100);
 
 -- Driver locations table (Realtime GPS / Map tracking)
 CREATE TABLE IF NOT EXISTS driver_locations (
@@ -67,11 +69,15 @@ CREATE TABLE IF NOT EXISTS bookings (
   departure_date DATE NOT NULL,
   seat_number INTEGER NOT NULL,
   vehicle_type VARCHAR(20) NOT NULL CHECK (vehicle_type IN ('Avanza', 'Elf Short', 'Elf Long')),
+  pickup_point VARCHAR(100),
   status VARCHAR(20) DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'closed')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   cancelled_at TIMESTAMPTZ,
   vehicle_lock BOOLEAN DEFAULT FALSE
 );
+
+-- Migration query: add pickup_point if missing
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_point VARCHAR(100);
 
 -- ============================================================
 -- INDEXES

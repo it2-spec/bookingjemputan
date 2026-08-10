@@ -28,7 +28,7 @@ export function Skeleton({ className, variant = 'text' }: SkeletonProps) {
 /** Skeleton for a booking card */
 export function BookingCardSkeleton() {
   return (
-    <div className="bg-white dark:bg-surface-900 rounded-[var(--radius-card)] border border-surface-100 dark:border-surface-800 p-4 space-y-3">
+    <div className="bg-white rounded-[var(--radius-card)] border border-slate-100 p-4 space-y-3">
       <div className="flex justify-between items-center">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-6 w-20 rounded-full" />
@@ -66,7 +66,7 @@ export function SeatMapSkeleton() {
 /** Skeleton for route cards */
 export function RouteCardSkeleton() {
   return (
-    <div className="bg-white dark:bg-surface-900 rounded-[var(--radius-card)] border border-surface-100 dark:border-surface-800 p-4 space-y-3">
+    <div className="bg-white rounded-[var(--radius-card)] border border-slate-100 p-4 space-y-3">
       <div className="flex items-center gap-3">
         <Skeleton variant="circular" className="h-10 w-10" />
         <div className="flex-1 space-y-2">

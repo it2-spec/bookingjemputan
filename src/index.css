@@ -123,19 +123,16 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-surface-50);
-  color: var(--color-surface-900);
+  background-color: #ffffff;
+  color: #0f172a;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dark mode base */
-.dark body,
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--color-surface-950);
-    color: var(--color-surface-100);
-  }
+/* Dark mode base (only when explicitly toggled via .dark class) */
+.dark body {
+  background-color: var(--color-surface-950);
+  color: var(--color-surface-100);
 }
 
 /* ============================================================

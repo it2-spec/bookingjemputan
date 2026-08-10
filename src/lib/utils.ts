@@ -33,20 +33,20 @@ export function getStatusColor(status: BookingStatus): {
   switch (status) {
     case 'confirmed':
       return {
-        bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-        text: 'text-emerald-700 dark:text-emerald-400',
+        bg: 'bg-emerald-50',
+        text: 'text-emerald-700',
         dot: 'bg-emerald-500',
       };
     case 'cancelled':
       return {
-        bg: 'bg-red-50 dark:bg-red-950/30',
-        text: 'text-red-700 dark:text-red-400',
+        bg: 'bg-red-50',
+        text: 'text-red-700',
         dot: 'bg-red-500',
       };
-    case 'closed':
+    default:
       return {
-        bg: 'bg-slate-100 dark:bg-slate-800/50',
-        text: 'text-slate-600 dark:text-slate-400',
+        bg: 'bg-slate-100',
+        text: 'text-slate-600',
         dot: 'bg-slate-400',
       };
   }

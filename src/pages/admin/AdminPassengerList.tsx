@@ -78,6 +78,7 @@ export default function AdminPassengerList() {
       Departemen: (b as any).employee?.department || '-',
       No_HP: (b as any).employee?.phone || '-',
       Rute: (b as any).route?.route_name || '-',
+      Titik_Jemput: b.pickup_point || '-',
       No_Kursi: b.seat_number,
       Kendaraan: b.vehicle_type,
       Tanggal: b.departure_date,
@@ -143,10 +144,10 @@ export default function AdminPassengerList() {
       {/* Header & Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
-            Daftar Penumpang & Manajemen User
+          <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
+            Daftar Penumpang Jemputan
           </h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400">
+          <p className="text-sm text-slate-600">
             {formatDateIndonesian(selectedDate)}
           </p>
         </div>
@@ -183,7 +184,7 @@ export default function AdminPassengerList() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 text-sm"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-900"
             />
           </div>
 
@@ -195,7 +196,7 @@ export default function AdminPassengerList() {
             <select
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 text-sm"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-900"
             >
               <option value="all">Semua Rute</option>
               {routes?.map((r) => (
@@ -218,7 +219,7 @@ export default function AdminPassengerList() {
                 placeholder="Nama, NIK, Dept..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 text-sm"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-900"
               />
             </div>
           </div>
@@ -229,8 +230,8 @@ export default function AdminPassengerList() {
       {isLoading ? (
         <p className="text-center py-8 text-sm text-surface-500">Memuat penumpang...</p>
       ) : filteredBookings.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800">
-          <p className="text-sm font-semibold text-surface-600 dark:text-surface-400">
+        <div className="text-center py-12 bg-white rounded-2xl border border-slate-100">
+          <p className="text-sm font-semibold text-slate-600">
             Tidak ada penumpang ditemukan.
           </p>
         </div>
@@ -252,22 +253,22 @@ export default function AdminPassengerList() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     {/* Employee Info */}
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 font-bold flex items-center justify-center text-sm shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center text-sm shrink-0">
                         {booking.seat_number}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-surface-900 dark:text-surface-100 text-base">
+                          <h4 className="font-bold text-slate-900 text-base">
                             {emp?.name || 'Nama Karyawan'}
                           </h4>
                           <Badge variant={isConfirmed ? 'success' : 'danger'}>
                             {booking.status}
                           </Badge>
                         </div>
-                        <p className="text-xs text-surface-500 mt-0.5">
-                          NIK: <span className="font-mono text-surface-700 dark:text-surface-300">{emp?.nik}</span> • {emp?.department}
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          NIK: <span className="font-mono text-slate-700">{emp?.nik}</span> • {emp?.department}
                         </p>
-                        <div className="flex items-center gap-3 text-xs text-surface-400 mt-1">
+                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3 h-3 text-primary-500" />
                             {rte?.route_name}
@@ -282,7 +283,7 @@ export default function AdminPassengerList() {
 
                     {/* Actions */}
                     {isConfirmed && (
-                      <div className="flex items-center justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-surface-100 dark:border-surface-800">
+                      <div className="flex items-center justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
                         <Button
                           variant="danger"
                           size="sm"
@@ -308,9 +309,9 @@ export default function AdminPassengerList() {
         title="Pembatalan Oleh Admin"
       >
         <div className="space-y-4">
-          <p className="text-sm text-surface-600 dark:text-surface-400">
+          <p className="text-sm text-slate-600">
             Apakah Anda yakin ingin membatalkan pesanan untuk penumpang{' '}
-            <strong className="text-surface-900 dark:text-surface-100">
+            <strong className="text-slate-900">
               {(cancellingBooking as any)?.employee?.name}
             </strong>
             ? Tindakan ini diperlukan untuk kebutuhan operasional.

@@ -30,14 +30,14 @@ export function EmptyState({
         className
       )}
     >
-      <div className="w-20 h-20 rounded-full bg-primary-50 dark:bg-primary-950/30 flex items-center justify-center mb-4">
+      <div className="w-20 h-20 rounded-full bg-primary-50 flex items-center justify-center mb-4">
         <div className="text-primary-500 dark:text-primary-400">{icon}</div>
       </div>
-      <h3 className="text-lg font-semibold text-surface-800 dark:text-surface-200 mb-1 font-[family-name:var(--font-display)]">
+      <h3 className="text-lg font-semibold text-slate-900 mb-1 font-[family-name:var(--font-display)]">
         {title}
       </h3>
       {description && (
-        <p className="text-sm text-surface-500 dark:text-surface-400 max-w-xs mb-4">
+        <p className="text-sm text-slate-600 max-w-xs mb-4">
           {description}
         </p>
       )}

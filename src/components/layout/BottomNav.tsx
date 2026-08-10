@@ -23,7 +23,7 @@ export function BottomNav() {
   if (location.pathname.startsWith('/admin')) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 glass border-t border-surface-200/50 dark:border-surface-700/50 safe-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 safe-bottom">
       <div className="max-w-lg mx-auto flex items-center justify-around px-2 py-1">
         {navItems.map((item) => {
           const isActive =
@@ -39,8 +39,8 @@ export function BottomNav() {
               className={cn(
                 'relative flex flex-col items-center justify-center py-2 px-2 min-w-[56px] touch-target transition-colors duration-200 cursor-pointer',
                 isActive
-                  ? 'text-primary-600 dark:text-primary-400'
-                  : 'text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300'
+                  ? 'text-primary-600'
+                  : 'text-slate-500 hover:text-slate-700'
               )}
               aria-label={item.label}
             >

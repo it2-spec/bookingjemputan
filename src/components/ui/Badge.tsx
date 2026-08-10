@@ -13,11 +13,11 @@ interface BadgeProps {
 }
 
 const variantStyles = {
-  default: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300',
-  success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
-  warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
-  danger: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400',
-  info: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400',
+  default: 'bg-slate-100 text-slate-700',
+  success: 'bg-emerald-50 text-emerald-700',
+  warning: 'bg-amber-50 text-amber-700',
+  danger: 'bg-red-50 text-red-700',
+  info: 'bg-sky-50 text-sky-700',
 };
 
 const dotColors = {

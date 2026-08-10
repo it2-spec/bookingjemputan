@@ -16,13 +16,13 @@ interface SeatButtonProps {
 
 const statusStyles: Record<SeatStatus, string> = {
   available:
-    'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200 hover:border-emerald-400 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300 cursor-pointer',
+    'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200 hover:border-emerald-400 cursor-pointer',
   booked:
-    'bg-red-100 border-red-300 text-red-800 dark:bg-red-900/40 dark:border-red-700 dark:text-red-300 cursor-not-allowed',
+    'bg-red-100 border-red-300 text-red-800 cursor-not-allowed',
   selected:
-    'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400 dark:bg-amber-900/40 dark:border-amber-600 dark:text-amber-300 cursor-pointer',
+    'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400 cursor-pointer',
   disabled:
-    'bg-surface-100 border-surface-200 text-surface-400 dark:bg-surface-800 dark:border-surface-700 dark:text-surface-500 cursor-not-allowed',
+    'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed',
 };
 
 export function SeatButton({
@@ -63,7 +63,7 @@ export function SeatButton({
       {/* Name display below seat number */}
       {(status === 'booked' || status === 'selected') && bookedByName ? (
         <span
-          className="text-[9px] font-medium text-surface-600 dark:text-surface-300 max-w-[60px] truncate leading-tight text-center"
+          className="text-[9px] font-medium text-slate-700 max-w-[60px] truncate leading-tight text-center"
           title={bookedByName}
         >
           {bookedByName.split(' ')[0]}

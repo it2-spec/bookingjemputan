@@ -60,28 +60,28 @@ export function Dialog({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative w-full sm:max-w-md bg-white dark:bg-surface-900 rounded-t-3xl sm:rounded-2xl shadow-float max-h-[90vh] overflow-y-auto safe-bottom"
+            className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-float max-h-[90vh] overflow-y-auto safe-bottom"
           >
             {/* Handle bar (mobile) */}
             <div className="flex justify-center pt-3 sm:hidden">
-              <div className="w-10 h-1 rounded-full bg-surface-300 dark:bg-surface-600" />
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
             </div>
 
             {/* Header */}
             {(title || showCloseButton) && (
               <div className="flex items-center justify-between px-5 pt-4 pb-2">
                 {title && (
-                  <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+                  <h2 className="text-lg font-bold text-slate-900 font-[family-name:var(--font-display)]">
                     {title}
                   </h2>
                 )}
                 {showCloseButton && (
                   <button
                     onClick={onClose}
-                    className="p-2 rounded-full hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors touch-target"
+                    className="p-2 rounded-full hover:bg-slate-100 transition-colors touch-target"
                     aria-label="Tutup"
                   >
-                    <X className="w-5 h-5 text-surface-500" />
+                    <X className="w-5 h-5 text-slate-500" />
                   </button>
                 )}
               </div>

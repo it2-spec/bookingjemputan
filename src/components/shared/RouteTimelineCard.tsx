@@ -149,14 +149,14 @@ export function RouteTimelineCard({
       <Card animate={false} className="overflow-hidden">
         {/* ---------- Header ---------- */}
         <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-950/40 flex items-center justify-center text-2xl shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center text-2xl shrink-0">
             {schedule.icon}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)] leading-tight">
+            <h3 className="font-bold text-slate-900 font-[family-name:var(--font-display)] leading-tight">
               {schedule.routeName}
             </h3>
-            <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+            <p className="text-xs text-slate-600 mt-0.5">
               Berangkat {departure} • Tiba {arrival} WIB
             </p>
           </div>
@@ -168,28 +168,28 @@ export function RouteTimelineCard({
 
         {/* ---------- Ringkasan ---------- */}
         <div className="flex flex-wrap gap-2 mt-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg px-2.5 py-1">
-            <MapPin className="w-3.5 h-3.5 text-surface-400" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1">
+            <MapPin className="w-3.5 h-3.5 text-slate-500" />
             {stops.length} titik jemput
           </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg px-2.5 py-1">
-            <Bus className="w-3.5 h-3.5 text-surface-400" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1">
+            <Bus className="w-3.5 h-3.5 text-slate-500" />
             {departure} WIB
           </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg px-2.5 py-1">
-            <Flag className="w-3.5 h-3.5 text-surface-400" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1">
+            <Flag className="w-3.5 h-3.5 text-slate-500" />
             Tujuan {arrival} WIB
           </span>
         </div>
 
         {/* ---------- Petunjuk ---------- */}
-        <p className="mt-3 text-[11px] text-surface-400 dark:text-surface-500 flex items-center gap-1">
+        <p className="mt-3 text-[11px] text-slate-500 flex items-center gap-1">
           <User className="w-3 h-3" />
           Ketuk titik untuk menandai posisi jemput Anda
         </p>
 
         {/* ---------- Timeline ---------- */}
-        <div className="mt-3 border-t border-surface-100 dark:border-surface-800 pt-4">
+        <div className="mt-3 border-t border-slate-100 pt-4">
           {stops.map((stop, i) => {
             const stopMin = timeToMinutes(stop.time);
             const status = getStopLiveStatus(stopMin, nowMinutes);
@@ -215,7 +215,7 @@ export function RouteTimelineCard({
                       'relative w-9 h-9 rounded-full border-2 flex items-center justify-center shrink-0 z-10 transition-colors',
                       cfg.node,
                       isSelected &&
-                        'ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-surface-900'
+                        'ring-2 ring-primary-500 ring-offset-2 ring-offset-white'
                     )}
                   >
                     {cfg.ping && (
@@ -234,7 +234,7 @@ export function RouteTimelineCard({
                         'w-0.5 flex-1 rounded-full mt-0.5',
                         status === 'passed'
                           ? 'bg-primary-500'
-                          : 'bg-surface-200 dark:bg-surface-700'
+                          : 'bg-slate-200'
                       )}
                     />
                   )}
@@ -246,8 +246,8 @@ export function RouteTimelineCard({
                     'flex-1 min-w-0 rounded-xl px-3 py-2 transition-colors',
                     !isLast && 'mb-3',
                     isSelected
-                      ? 'bg-primary-50 dark:bg-primary-950/40 ring-1 ring-primary-300 dark:ring-primary-700'
-                      : 'group-hover:bg-surface-50 dark:group-hover:bg-surface-800/40'
+                      ? 'bg-primary-50 ring-1 ring-primary-300'
+                      : 'group-hover:bg-slate-50'
                   )}
                 >
                   {/* Baris 1: jam + label + badge posisi */}
@@ -257,10 +257,10 @@ export function RouteTimelineCard({
                         className={cn(
                           'text-sm font-bold font-mono tabular-nums',
                           status === 'passed'
-                            ? 'text-surface-400 dark:text-surface-500'
+                            ? 'text-slate-400'
                             : isNext || status === 'arriving'
-                              ? 'text-primary-600 dark:text-primary-400'
-                              : 'text-surface-900 dark:text-surface-100'
+                              ? 'text-primary-600'
+                              : 'text-slate-900'
                         )}
                       >
                         {stop.time}
@@ -289,8 +289,8 @@ export function RouteTimelineCard({
                     className={cn(
                       'mt-0.5 font-semibold leading-snug',
                       status === 'passed'
-                        ? 'text-surface-500 dark:text-surface-400'
-                        : 'text-surface-900 dark:text-surface-100'
+                        ? 'text-slate-500'
+                        : 'text-slate-900'
                     )}
                   >
                     {stop.name}
@@ -299,19 +299,19 @@ export function RouteTimelineCard({
                   {/* Baris 3: status live */}
                   <div className="mt-1">
                     {status === 'passed' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-surface-400 dark:text-surface-500">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Sudah dilewati
                       </span>
                     )}
                     {status === 'arriving' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
                         <CircleDot className="w-3.5 h-3.5" />
                         Kendaraan tiba di titik ini
                       </span>
                     )}
                     {status === 'upcoming' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
                         <Clock className="w-3.5 h-3.5" />
                         {isNext ? 'Titik berikutnya • ' : ''}
                         {getEstimateLabel(stopMin, nowMinutes)}

@@ -15,6 +15,7 @@ import {
   Clock,
   Shield,
   XCircle,
+  Navigation,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -22,6 +23,7 @@ import { Badge } from '../components/ui/Badge';
 import { BookingCardSkeleton } from '../components/ui/Skeleton';
 import { Dialog } from '../components/ui/Dialog';
 import { SeatMap } from '../components/booking/SeatMap';
+import { PassengerLiveTrackerModal } from '../components/booking/PassengerLiveTrackerModal';
 import { useAuth } from '../context/AuthContext';
 import { useActiveBooking, useCancelBooking, useRouteBookings } from '../hooks/useBooking';
 import { useRoutes } from '../hooks/useRoutes';
@@ -33,7 +35,7 @@ import {
   isBookingOpen,
   getVehicleType,
 } from '../lib/vehicleLogic';
-import { getGreeting, getVehicleIcon, padZero } from '../lib/utils';
+import { getGreeting, getVehicleIcon, padZero, cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 export default function HomePage() {
@@ -58,6 +60,7 @@ export default function HomePage() {
   const [countdown, setCountdown] = useState(getTimeUntilDeadline());
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showVisualMapDialog, setShowVisualMapDialog] = useState(false);
+  const [showLiveDriverTracker, setShowLiveDriverTracker] = useState(false);
   const cancelBooking = useCancelBooking();
 
   useEffect(() => {
@@ -89,20 +92,20 @@ export default function HomePage() {
         className="flex items-center justify-between"
       >
         <div>
-          <p className="text-sm text-surface-500 dark:text-surface-400">
+          <p className="text-sm text-slate-600 font-medium">
             {getGreeting()} 👋
           </p>
-          <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+          <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
             {employee?.name}
           </h1>
-          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             {employee?.department}
           </p>
         </div>
         {employee?.role === 'admin' && (
           <button
             onClick={() => navigate('/admin')}
-            className="p-2.5 rounded-xl bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors cursor-pointer flex items-center gap-1.5 font-semibold text-xs border border-primary-200 dark:border-primary-800"
+            className="p-2.5 rounded-xl bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors cursor-pointer flex items-center gap-1.5 font-semibold text-xs border border-primary-200"
             aria-label="Admin Panel"
           >
             <Shield className="w-4 h-4" />
@@ -178,16 +181,16 @@ export default function HomePage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
         >
-          <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+          <Card className="bg-amber-50 border-amber-200">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                <p className="text-sm font-semibold text-amber-800">
                   Booking Ditutup
                 </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                <p className="text-xs text-amber-700 mt-0.5">
                   Booking telah ditutup. Silakan hubungi Admin apabila terdapat kebutuhan khusus.
                 </p>
               </div>
@@ -203,7 +206,7 @@ export default function HomePage() {
         transition={{ delay: 0.2 }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wider">
+          <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
             Booking Aktif
           </h2>
         </div>
@@ -217,7 +220,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-primary-500" />
-                  <span className="font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+                  <span className="font-bold text-slate-900 font-[family-name:var(--font-display)]">
                     {(activeBooking as any).route?.route_name || 'Rute'}
                   </span>
                 </div>
@@ -227,19 +230,19 @@ export default function HomePage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
+                <div className="flex items-center gap-1.5 text-slate-600">
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{formatDateIndonesian(activeBooking.departure_date)}</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
+                <div className="flex items-center gap-1.5 text-slate-600">
                   <Clock className="w-3.5 h-3.5" />
                   <span>05:30 WIB</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
+                <div className="flex items-center gap-1.5 text-slate-600">
                   <Armchair className="w-3.5 h-3.5" />
                   <span>Kursi {activeBooking.seat_number}</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
+                <div className="flex items-center gap-1.5 text-slate-600">
                   <Bus className="w-3.5 h-3.5" />
                   {(() => {
                     const currentVehicle = getVehicleType(activeRouteBookings.filter(b => b.status === 'confirmed').length);
@@ -247,6 +250,21 @@ export default function HomePage() {
                   })()}
                 </div>
               </div>
+
+              {activeBooking.pickup_point && (
+                <div className="p-2 bg-slate-100 rounded-lg text-xs flex items-center gap-1.5 text-slate-700">
+                  <MapPin className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+                  <span><strong>Halte Jemput:</strong> {activeBooking.pickup_point}</span>
+                </div>
+              )}
+
+              {/* Live Driver Tracking CTA Button */}
+              <button
+                onClick={() => setShowLiveDriverTracker(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              >
+                <Navigation className="w-4 h-4 animate-spin" /> 🚌 Lacak Posisi Driver Real-Time
+              </button>
 
               <div className="flex gap-2 pt-1">
                 <Button
@@ -273,13 +291,13 @@ export default function HomePage() {
           </Card>
         ) : (
           <Card className="text-center py-6">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-primary-50 dark:bg-primary-950/30 flex items-center justify-center mb-3">
-              <Ticket className="w-7 h-7 text-primary-500 dark:text-primary-400" />
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-primary-50 flex items-center justify-center mb-3">
+              <Ticket className="w-7 h-7 text-primary-500" />
             </div>
-            <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
+            <p className="text-sm font-medium text-slate-800">
               Belum ada booking aktif
             </p>
-            <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 mb-4">
+            <p className="text-xs text-slate-600 mt-1 mb-4">
               Pesan shuttle untuk besok sekarang
             </p>
             {bookingOpen && (
@@ -303,47 +321,91 @@ export default function HomePage() {
           transition={{ delay: 0.3 }}
         >
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wider">
-              Rute Tersedia
+            <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
+              Rute Terdaftar Anda
             </h2>
             <button
-              onClick={() => navigate('/booking')}
-              className="text-xs text-primary-600 dark:text-primary-400 font-medium flex items-center gap-0.5 cursor-pointer"
+              onClick={() => navigate('/profile')}
+              className="text-xs text-primary-600 font-medium flex items-center gap-0.5 cursor-pointer"
             >
-              Lihat semua <ChevronRight className="w-3.5 h-3.5" />
+              Ubah di Profil <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
           <div className="space-y-2">
-            {routes.map((route, i) => (
-              <motion.div
-                key={route.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + i * 0.1 }}
-              >
-                <Card
-                  hoverable
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/booking?route=${route.id}`)}
-                  animate={false}
+            {routes.map((route, i) => {
+              const isAssigned = employee?.assigned_route_id
+                ? employee.assigned_route_id === route.id
+                : route.route_name.toLowerCase().includes('karawang barat'); // Default route
+
+              return (
+                <motion.div
+                  key={route.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1 }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-950/30 flex items-center justify-center">
-                      <MapPin className="w-5 h-5 text-primary-500 dark:text-primary-400" />
+                  <Card
+                    hoverable={isAssigned}
+                    className={cn(
+                      'transition-all',
+                      isAssigned
+                        ? 'cursor-pointer border-l-4 border-l-primary-600 bg-primary-50'
+                        : 'opacity-60 bg-slate-100 cursor-not-allowed'
+                    )}
+                    onClick={() => {
+                      if (isAssigned) {
+                        navigate(`/booking?route=${route.id}`);
+                      } else {
+                        toast.error(
+                          `Anda terdaftar untuk rute ${
+                            employee?.assigned_route_name || 'Karawang Barat'
+                          }. Silakan ubah rute di Profil jika ingin pindah.`,
+                          { duration: 4000 }
+                        );
+                      }
+                    }}
+                    animate={false}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center',
+                          isAssigned
+                            ? 'bg-primary-100 text-primary-600'
+                            : 'bg-slate-200 text-slate-400'
+                        )}
+                      >
+                        <MapPin className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-slate-900 text-sm">
+                            {route.route_name}
+                          </p>
+                          {isAssigned ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">
+                              ✓ Terdaftar
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-mono">
+                              🔒 Terkunci
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Berangkat 05:30 WIB
+                        </p>
+                      </div>
+                      {isAssigned ? (
+                        <ChevronRight className="w-5 h-5 text-primary-600" />
+                      ) : (
+                        <span className="text-[10px] text-surface-400 underline">Ubah</span>
+                      )}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-surface-900 dark:text-surface-100 text-sm">
-                        {route.route_name}
-                      </p>
-                      <p className="text-xs text-surface-400 dark:text-surface-500">
-                        Berangkat 05:30 WIB
-                      </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-surface-300 dark:text-surface-600" />
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+                  </Card>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       )}
@@ -399,6 +461,16 @@ export default function HomePage() {
           </p>
         </div>
       </Dialog>
+
+      {/* Live Driver Tracker Dialog */}
+      {activeBooking && (
+        <PassengerLiveTrackerModal
+          isOpen={showLiveDriverTracker}
+          onClose={() => setShowLiveDriverTracker(false)}
+          routeName={(activeBooking as any).route?.route_name || 'Karawang Barat'}
+          routeId={activeBooking.route_id}
+        />
+      )}
     </div>
   );
 }

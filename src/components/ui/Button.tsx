@@ -19,13 +19,13 @@ const variantStyles = {
   primary:
     'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-md hover:shadow-lg',
   secondary:
-    'bg-surface-100 text-surface-700 hover:bg-surface-200 active:bg-surface-300 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700',
+    'bg-slate-100 text-slate-800 hover:bg-slate-200 active:bg-slate-300',
   danger:
     'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-md',
   ghost:
-    'bg-transparent text-surface-600 hover:bg-surface-100 active:bg-surface-200 dark:text-surface-400 dark:hover:bg-surface-800',
+    'bg-transparent text-slate-700 hover:bg-slate-100 active:bg-slate-200',
   outline:
-    'bg-transparent border-2 border-primary-600 text-primary-600 hover:bg-primary-50 dark:border-primary-400 dark:text-primary-400 dark:hover:bg-primary-950/30',
+    'bg-transparent border-2 border-primary-600 text-primary-600 hover:bg-primary-50',
 };
 
 const sizeStyles = {

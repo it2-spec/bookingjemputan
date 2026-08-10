@@ -139,17 +139,17 @@ export default function SuperAdminDashboard() {
       {/* Header Title Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3 font-[family-name:var(--font-display)]">
-            Superadmin Control Tower <span className="text-xs px-2.5 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full font-mono">Live Monitoring</span>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-3 font-[family-name:var(--font-display)]">
+            Superadmin Control Tower <span className="text-xs px-2.5 py-1 bg-blue-100 text-blue-700 border border-blue-200 rounded-full font-mono font-semibold">Live Monitoring</span>
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500 mt-1">
             Sistem terpusat pemantauan driver real-time, approval rute, & armada jemputan
           </p>
         </div>
 
         <button
           onClick={loadSuperAdminData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer self-start md:self-auto"
+          className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer self-start md:self-auto"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Data
         </button>
@@ -157,54 +157,54 @@ export default function SuperAdminDashboard() {
 
       {/* Top Stat Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400">Pemesanan Hari Ini</span>
-            <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Pemesanan Hari Ini</span>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <Bus className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-white">{todayBookingCount} <span className="text-xs text-slate-400 font-normal">tiket</span></div>
-          <div className="mt-2 text-[11px] text-emerald-400 flex items-center gap-1">
+          <div className="text-2xl font-bold text-slate-900">{todayBookingCount} <span className="text-xs text-slate-500 font-normal">tiket</span></div>
+          <div className="mt-2 text-[11px] text-emerald-600 font-medium flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" /> Terkonfirmasi sistem
           </div>
         </div>
 
-        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400">Total Karyawan</span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Total Karyawan</span>
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <Users className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-white">{employeeCount} <span className="text-xs text-slate-400 font-normal">user</span></div>
-          <div className="mt-2 text-[11px] text-slate-400">
+          <div className="text-2xl font-bold text-slate-900">{employeeCount} <span className="text-xs text-slate-500 font-normal">user</span></div>
+          <div className="mt-2 text-[11px] text-slate-500">
             Termasuk driver & admin
           </div>
         </div>
 
-        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400">Driver Active GPS</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Driver Active GPS</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <Navigation className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-white">{drivers.length} <span className="text-xs text-slate-400 font-normal">driver</span></div>
-          <div className="mt-2 text-[11px] text-emerald-400 flex items-center gap-1">
+          <div className="text-2xl font-bold text-slate-900">{drivers.length} <span className="text-xs text-slate-500 font-normal">driver</span></div>
+          <div className="mt-2 text-[11px] text-emerald-600 font-medium flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> Live Broadcast Active
           </div>
         </div>
 
-        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400">Pending Approvals</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Pending Approvals</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-white">{pendingApprovals.length} <span className="text-xs text-slate-400 font-normal">pengajuan</span></div>
-          <div className="mt-2 text-[11px] text-amber-400">
+          <div className="text-2xl font-bold text-slate-900">{pendingApprovals.length} <span className="text-xs text-slate-500 font-normal">pengajuan</span></div>
+          <div className="mt-2 text-[11px] text-amber-600 font-medium">
             Perlu tindak lanjut admin
           </div>
         </div>
@@ -213,15 +213,15 @@ export default function SuperAdminDashboard() {
       {/* Main Grid: Live Map & Pending Requests */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Live Map Panel (2 cols) */}
-        <div className="lg:col-span-2 bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Navigation className="w-5 h-5 text-blue-400" /> Live Tracking Armada Shuttle (Leaflet / OpenStreetMap)
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Navigation className="w-5 h-5 text-blue-600" /> Live Tracking Armada Shuttle (Leaflet / OpenStreetMap)
               </h3>
-              <p className="text-xs text-slate-400">Monitoring lokasi real-time driver & titik penjemputan Karawang</p>
+              <p className="text-xs text-slate-500">Monitoring lokasi real-time driver & titik penjemputan Karawang</p>
             </div>
-            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-xs font-semibold flex items-center gap-1.5">
+            <span className="px-3 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Stream
             </span>
           </div>
@@ -230,14 +230,14 @@ export default function SuperAdminDashboard() {
             center={[-6.3039, 107.3009]}
             zoom={12}
             markers={mapMarkers}
-            className="h-96 w-full rounded-xl overflow-hidden border border-slate-800 shadow-inner"
+            className="h-96 w-full rounded-xl overflow-hidden border border-slate-200 shadow-inner"
           />
 
-          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-800">
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
             <span>Legenda: 🚌 Driver Live | 📍 Halte Jemputan</span>
             <button
               onClick={() => navigate('/superadmin/drivers')}
-              className="text-blue-400 hover:underline font-semibold"
+              className="text-blue-600 hover:underline font-semibold"
             >
               Lihat Detail Driver Console &rarr;
             </button>
@@ -245,15 +245,15 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Pending Approvals Widget (1 col) */}
-        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4 flex flex-col justify-between">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-amber-400" /> Pengajuan Rute
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5 text-amber-500" /> Pengajuan Rute
               </h3>
               <button
                 onClick={() => navigate('/superadmin/approvals')}
-                className="text-xs text-blue-400 hover:underline font-semibold"
+                className="text-xs text-blue-600 hover:underline font-semibold"
               >
                 Lihat Semua
               </button>
@@ -261,7 +261,7 @@ export default function SuperAdminDashboard() {
 
             <div className="space-y-3">
               {pendingApprovals.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs">
+                <div className="py-12 text-center text-slate-400 text-xs">
                   <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500/50" />
                   Tidak ada pengajuan rute pending.
                 </div>
@@ -269,19 +269,19 @@ export default function SuperAdminDashboard() {
                 pendingApprovals.slice(0, 4).map((req) => (
                   <div
                     key={req.id}
-                    className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2 hover:border-slate-700 transition-colors"
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-slate-300 transition-colors"
                   >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-white">{req.employee?.name}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">NIK {req.employee?.nik}</span>
+                      <span className="font-bold text-slate-900">{req.employee?.name}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">NIK {req.employee?.nik}</span>
                     </div>
-                    <div className="text-[11px] text-slate-300">
-                      Request rute: <strong className="text-blue-400">{req.requested_route?.route_name}</strong>
+                    <div className="text-[11px] text-slate-600">
+                      Request rute: <strong className="text-blue-600">{req.requested_route?.route_name}</strong>
                     </div>
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         onClick={() => handleInlineApprove(req)}
-                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow transition-colors cursor-pointer"
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors cursor-pointer"
                       >
                         Setujui
                       </button>
@@ -292,9 +292,9 @@ export default function SuperAdminDashboard() {
             </div>
           </div>
 
-          <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl flex items-center gap-3 mt-4">
-            <AlertCircle className="w-5 h-5 text-blue-400 shrink-0" />
-            <p className="text-[11px] text-slate-400">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3 mt-4">
+            <AlertCircle className="w-5 h-5 text-blue-600 shrink-0" />
+            <p className="text-[11px] text-slate-600">
               Superadmin memiliki wewenang penuh untuk mengubah status user, rute, dan menyetujui pemindahan lokasi jemputan.
             </p>
           </div>

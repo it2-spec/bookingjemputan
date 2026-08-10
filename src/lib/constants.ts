@@ -4,8 +4,8 @@
 
 import type { VehicleType } from './types';
 
-/** Booking closes at 20:00 WIB every day */
-export const BOOKING_DEADLINE_HOUR = 20;
+/** Booking closes at 19:00 WIB every day */
+export const BOOKING_DEADLINE_HOUR = 19;
 
 /** All shuttles depart at 05:30 WIB */
 export const DEPARTURE_TIME = '05:30';

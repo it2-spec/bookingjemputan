@@ -19,7 +19,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
+    <div className="min-h-screen bg-white">
       {/* Main content area with bottom padding for nav */}
       <main className="pb-20 max-w-lg mx-auto">
         <Outlet />

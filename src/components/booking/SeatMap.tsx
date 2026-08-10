@@ -64,10 +64,10 @@ export function SeatMap({
         key={vehicleType}
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-2 mb-4 px-4 py-2 rounded-full bg-primary-50 dark:bg-primary-950/30 border border-primary-100 dark:border-primary-800"
+        className="flex items-center gap-2 mb-4 px-4 py-2 rounded-full bg-primary-50 border border-primary-200"
       >
         <span className="text-lg">{getVehicleIcon(vehicleType)}</span>
-        <span className="text-sm font-semibold text-primary-700 dark:text-primary-300">
+        <span className="text-sm font-bold text-primary-700">
           {VEHICLE_LABELS[vehicleType]}
         </span>
       </motion.div>
@@ -96,15 +96,15 @@ export function SeatMap({
       {/* Legend */}
       <div className="flex flex-wrap justify-center gap-4 mt-6">
         {[
-          { color: 'bg-emerald-100 border-emerald-300 dark:bg-emerald-900/40 dark:border-emerald-700', label: 'Tersedia' },
-          { color: 'bg-red-100 border-red-300 dark:bg-red-900/40 dark:border-red-700', label: 'Dipesan' },
-          { color: 'bg-amber-100 border-amber-400 dark:bg-amber-900/40 dark:border-amber-600', label: 'Dipilih' },
+          { color: 'bg-emerald-100 border-emerald-300', label: 'Tersedia' },
+          { color: 'bg-red-100 border-red-300', label: 'Dipesan' },
+          { color: 'bg-amber-100 border-amber-400', label: 'Dipilih' },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-1.5">
             <div
               className={`w-5 h-5 rounded-md border-2 ${item.color}`}
             />
-            <span className="text-xs text-surface-600 dark:text-surface-400">
+            <span className="text-xs text-slate-600">
               {item.label}
             </span>
           </div>

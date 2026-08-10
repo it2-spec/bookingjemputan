@@ -21,14 +21,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5"
+            className="block text-sm font-bold text-slate-900 mb-1.5"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {icon && (
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-700 font-bold">
               {icon}
             </div>
           )}
@@ -36,27 +36,27 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'w-full rounded-[var(--radius-input)] border bg-white dark:bg-surface-900',
-              'px-4 py-3 text-base text-surface-900 dark:text-surface-100',
-              'placeholder:text-surface-400 dark:placeholder:text-surface-500',
+              'w-full rounded-xl border bg-white shadow-sm',
+              'px-4 py-3 text-base text-slate-900 font-semibold',
+              'placeholder:text-slate-400 placeholder:font-normal',
               'transition-all duration-200',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500',
-              icon ? 'pl-11' : '',
+              'focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-600',
+              icon ? 'pl-11 border-slate-400' : 'border-slate-300',
               error
-                ? 'border-red-400 focus:ring-red-500/50 focus:border-red-500'
-                : 'border-surface-200 dark:border-surface-700',
+                ? 'border-red-500 focus:ring-red-500/40 focus:border-red-600'
+                : '',
               className
             )}
             {...props}
           />
         </div>
         {error && (
-          <p className="mt-1.5 text-sm text-red-500 dark:text-red-400 animate-slide-down">
+          <p className="mt-1.5 text-sm text-red-600 font-semibold animate-slide-down">
             {error}
           </p>
         )}
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-surface-500 dark:text-surface-400">
+          <p className="mt-1.5 text-sm text-slate-600">
             {helperText}
           </p>
         )}

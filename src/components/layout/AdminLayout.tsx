@@ -26,26 +26,26 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
+    <div className="min-h-screen bg-slate-50">
       {/* Admin header */}
-      <header className="sticky top-0 z-40 glass border-b border-surface-200/50 dark:border-surface-700/50 safe-top">
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 safe-top">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors touch-target cursor-pointer"
+            className="p-2 rounded-xl hover:bg-slate-100 transition-colors touch-target cursor-pointer"
             aria-label="Kembali"
           >
-            <ArrowLeft className="w-5 h-5 text-surface-600 dark:text-surface-400" />
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
           </button>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
               <Shield className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+              <h1 className="text-sm font-bold text-slate-900 font-[family-name:var(--font-display)]">
                 Admin Panel
               </h1>
-              <p className="text-[10px] text-surface-500">Shuttle Booking</p>
+              <p className="text-[10px] text-slate-600 font-medium">Shuttle Booking</p>
             </div>
           </div>
         </div>
@@ -66,7 +66,7 @@ export function AdminLayout() {
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
                   isActive
                     ? 'bg-primary-600 text-white'
-                    : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+                    : 'text-slate-700 hover:bg-slate-100'
                 )}
               >
                 <Icon className="w-4 h-4" />

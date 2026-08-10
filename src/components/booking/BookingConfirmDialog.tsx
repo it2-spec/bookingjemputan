@@ -19,6 +19,7 @@ interface BookingConfirmDialogProps {
   departureDate: string;
   seatNumber: number;
   vehicleType: VehicleType;
+  pickupPoint?: string;
 }
 
 export function BookingConfirmDialog({
@@ -30,6 +31,7 @@ export function BookingConfirmDialog({
   departureDate,
   seatNumber,
   vehicleType,
+  pickupPoint,
 }: BookingConfirmDialogProps) {
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="Konfirmasi Booking">
@@ -40,22 +42,22 @@ export function BookingConfirmDialog({
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-            className="w-16 h-16 rounded-full bg-primary-50 dark:bg-primary-950/30 flex items-center justify-center"
+            className="w-16 h-16 rounded-full bg-primary-50 flex items-center justify-center"
           >
             <CheckCircle2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
           </motion.div>
         </div>
 
-        <p className="text-center text-sm text-surface-600 dark:text-surface-400">
+        <p className="text-center text-sm text-slate-700">
           Apakah Anda yakin ingin memesan shuttle berikut?
         </p>
 
         {/* Booking details */}
-        <div className="bg-surface-50 dark:bg-surface-800/50 rounded-xl p-4 space-y-3">
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
           <DetailRow
-            icon={<MapPin className="w-4 h-4" />}
-            label="Rute"
-            value={routeName}
+            icon={<MapPin className="w-4 h-4 text-primary-500" />}
+            label="Rute & Halte Jemput"
+            value={`${routeName} (${pickupPoint || 'Titik Penjemputan'})`}
           />
           <DetailRow
             icon={<Calendar className="w-4 h-4" />}
@@ -114,10 +116,10 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="text-primary-500 dark:text-primary-400 shrink-0">{icon}</div>
+      <div className="text-primary-500 shrink-0">{icon}</div>
       <div className="flex-1">
-        <p className="text-xs text-surface-500 dark:text-surface-400">{label}</p>
-        <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-sm font-semibold text-slate-900">
           {value}
         </p>
       </div>

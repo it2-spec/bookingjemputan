@@ -32,10 +32,10 @@ export default function HistoryPage() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+        <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
           Riwayat Booking
         </h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400">
+        <p className="text-sm text-slate-600">
           Daftar booking Anda sebelumnya
         </p>
       </motion.div>
@@ -85,7 +85,7 @@ function HistoryCard({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-primary-500" />
-              <span className="font-bold text-surface-900 dark:text-surface-100 text-sm font-[family-name:var(--font-display)]">
+              <span className="font-bold text-slate-900 text-sm font-[family-name:var(--font-display)]">
                 {route?.route_name || 'Rute'}
               </span>
             </div>
@@ -139,12 +139,12 @@ function DetailItem({
 }) {
   return (
     <div className="flex items-start gap-1.5">
-      <div className="text-surface-400 dark:text-surface-500 mt-0.5">{icon}</div>
+      <div className="text-slate-500 mt-0.5">{icon}</div>
       <div>
-        <p className="text-[10px] text-surface-400 dark:text-surface-500 uppercase tracking-wide">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
           {label}
         </p>
-        <p className="text-xs font-medium text-surface-700 dark:text-surface-300">
+        <p className="text-xs font-semibold text-slate-800">
           {value}
         </p>
       </div>

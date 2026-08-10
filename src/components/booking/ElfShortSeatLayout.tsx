@@ -28,10 +28,10 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
       transition={{ duration: 0.4 }}
       className="flex flex-col items-center"
     >
-      <div className="relative bg-surface-50 dark:bg-surface-800/50 border-2 border-surface-200 dark:border-surface-700 rounded-3xl p-4 pt-7 pb-8 w-[290px]">
+      <div className="relative bg-slate-50 border-2 border-slate-200 rounded-3xl p-4 pt-7 pb-8 w-[290px]">
         {/* Windshield */}
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-36 h-6 bg-primary-100 dark:bg-primary-900/40 border-2 border-surface-200 dark:border-surface-700 rounded-t-2xl flex items-center justify-center">
-          <span className="text-[9px] font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wider">
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-36 h-6 bg-primary-100 border-2 border-slate-200 rounded-t-2xl flex items-center justify-center">
+          <span className="text-[9px] font-semibold text-primary-600 uppercase tracking-wider">
             Depan
           </span>
         </div>
@@ -47,9 +47,9 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
           />
           <div className="w-11 h-11" />
           <div className="w-11 h-11" />
-          <div className="w-11 h-11 rounded-[var(--radius-seat)] bg-surface-200 dark:bg-surface-700 border-2 border-surface-300 dark:border-surface-600 flex flex-col items-center justify-center">
+          <div className="w-11 h-11 rounded-[var(--radius-seat)] bg-slate-200 border-2 border-slate-300 flex flex-col items-center justify-center">
             <span className="text-xs">🚐</span>
-            <span className="text-[8px] font-bold text-surface-500 uppercase">Driver</span>
+            <span className="text-[8px] font-bold text-slate-600 uppercase">Driver</span>
           </div>
         </div>
 

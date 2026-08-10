@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft, Lock, MapPin } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { RouteCard } from '../components/shared/RouteCard';
 import { SeatMap } from '../components/booking/SeatMap';
@@ -22,6 +22,7 @@ import {
 import { useVehicleType } from '../hooks/useVehicleType';
 import { useRealtimeBookings } from '../hooks/useRealtimeBookings';
 import { supabase } from '../lib/supabase';
+import { getScheduleByRouteName } from '../lib/routeSchedules';
 import {
   getTomorrowDate,
   isBookingOpen,
@@ -40,25 +41,53 @@ export default function BookingPage() {
     preselectedRoute
   );
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
+  const [selectedPickupPoint, setSelectedPickupPoint] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState(false);
 
   const tomorrowDate = getTomorrowDate();
   const bookingOpen = isBookingOpen();
 
   const { data: routes, isLoading: routesLoading } = useRoutes();
+  const selectedRoute = routes?.find((r) => r.id === selectedRouteId);
+  const routeSchedule = selectedRoute ? getScheduleByRouteName(selectedRoute.route_name) : undefined;
 
-  // Auto lock to assigned route if passenger has one
+  // Auto lock to assigned route if passenger has one & set default pickup point
   useEffect(() => {
-    if (routes && routes.length > 0 && !selectedRouteId) {
-      if (employee?.assigned_route_id) {
-        setSelectedRouteId(employee.assigned_route_id);
-      } else {
+    if (routes && routes.length > 0) {
+      const assignedId = employee?.assigned_route_id;
+      if (assignedId) {
+        if (selectedRouteId !== assignedId) {
+          setSelectedRouteId(assignedId);
+          if (preselectedRoute && preselectedRoute !== assignedId) {
+            toast.error('Rute disesuaikan dengan rute terdaftar di profil Anda.', { duration: 4000 });
+          }
+        }
+      } else if (!selectedRouteId) {
         // Default to Karawang Barat
         const kb = routes.find((r) => r.route_name.toLowerCase().includes('karawang barat'));
         if (kb) setSelectedRouteId(kb.id);
       }
     }
-  }, [routes, employee?.assigned_route_id, selectedRouteId]);
+  }, [routes, employee?.assigned_route_id, selectedRouteId, preselectedRoute]);
+
+  // Set default pickup point when routeSchedule changes
+  useEffect(() => {
+    if (routeSchedule && routeSchedule.stops.length > 0 && !selectedPickupPoint) {
+      const empDefault = employee?.default_pickup_point || (employee?.id ? localStorage.getItem(`shuttle_default_pickup_${employee.id}`) : null);
+      const cachedLast = localStorage.getItem('shuttle_last_pickup_point');
+
+      const matchesEmpDefault = empDefault && routeSchedule.stops.some((s) => s.name === empDefault);
+      const matchesCached = cachedLast && routeSchedule.stops.some((s) => s.name === cachedLast);
+
+      if (matchesEmpDefault) {
+        setSelectedPickupPoint(empDefault!);
+      } else if (matchesCached) {
+        setSelectedPickupPoint(cachedLast!);
+      } else {
+        setSelectedPickupPoint(routeSchedule.stops[0].name);
+      }
+    }
+  }, [routeSchedule, selectedPickupPoint, employee?.default_pickup_point, employee?.id]);
 
   const { data: bookings = [], isLoading: bookingsLoading } = useRouteBookings(
     selectedRouteId,
@@ -75,8 +104,6 @@ export default function BookingPage() {
 
   const vehicleInfo = useVehicleType(bookings);
 
-  const selectedRoute = routes?.find((r) => r.id === selectedRouteId);
-
   // Reset seat when route changes
   useEffect(() => {
     setSelectedSeat(null);
@@ -89,6 +116,11 @@ export default function BookingPage() {
   const handleConfirmBooking = async () => {
     if (!employee || !selectedRouteId || !selectedSeat) return;
 
+    if (!selectedPickupPoint) {
+      toast.error('Silakan pilih titik penjemputan spesifik Anda');
+      return;
+    }
+
     try {
       const confirmedCount = bookings.filter(b => b.status === 'confirmed').length + 1;
       const vehicleType = getVehicleType(confirmedCount);
@@ -99,8 +131,11 @@ export default function BookingPage() {
         departure_date: tomorrowDate,
         seat_number: selectedSeat,
         vehicle_type: vehicleType,
+        pickup_point: selectedPickupPoint,
         status: 'confirmed',
       });
+
+      localStorage.setItem('shuttle_last_pickup_point', selectedPickupPoint);
 
       toast.success('Booking berhasil! 🎉', {
         duration: 3000,
@@ -136,16 +171,16 @@ export default function BookingPage() {
           onClick={() =>
             selectedRouteId ? setSelectedRouteId(null) : navigate(-1)
           }
-          className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors touch-target cursor-pointer"
+          className="p-2 rounded-xl hover:bg-slate-100 transition-colors touch-target cursor-pointer"
           aria-label="Kembali"
         >
-          <ArrowLeft className="w-5 h-5 text-surface-600 dark:text-surface-400" />
+          <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
         <div>
-          <h1 className="text-lg font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+          <h1 className="text-lg font-bold text-slate-900 font-[family-name:var(--font-display)]">
             {selectedRouteId ? 'Pilih Kursi' : 'Pilih Rute'}
           </h1>
-          <p className="text-xs text-surface-500 dark:text-surface-400">
+          <p className="text-xs text-slate-600">
             Shuttle untuk besok • {DEPARTURE_TIME} WIB
           </p>
         </div>
@@ -156,13 +191,13 @@ export default function BookingPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl p-5 border border-amber-200 dark:border-amber-800 text-center"
+          className="bg-amber-50 rounded-2xl p-5 border border-amber-200 text-center"
         >
           <Lock className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-          <h3 className="font-bold text-amber-800 dark:text-amber-300 mb-1">
+          <h3 className="font-bold text-amber-800 mb-1">
             Booking Ditutup
           </h3>
-          <p className="text-sm text-amber-600 dark:text-amber-400">
+          <p className="text-sm text-amber-700">
             Booking telah ditutup. Silakan hubungi Admin apabila terdapat
             kebutuhan khusus.
           </p>
@@ -174,12 +209,12 @@ export default function BookingPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-primary-50 dark:bg-primary-950/20 rounded-2xl p-5 border border-primary-200 dark:border-primary-800 text-center"
+          className="bg-primary-50 rounded-2xl p-5 border border-primary-200 text-center"
         >
-          <h3 className="font-bold text-primary-800 dark:text-primary-300 mb-1">
+          <h3 className="font-bold text-primary-800 mb-1">
             Anda Sudah Memiliki Booking
           </h3>
-          <p className="text-sm text-primary-600 dark:text-primary-400 mb-3">
+          <p className="text-sm text-primary-700 mb-3">
             Setiap karyawan hanya dapat memiliki satu booking aktif per hari.
           </p>
           <Button
@@ -222,17 +257,40 @@ export default function BookingPage() {
             className="space-y-5"
           >
             {/* Route Restriction Banner */}
-            <div className="bg-primary-50 dark:bg-primary-950/40 p-3 rounded-xl border border-primary-200 dark:border-primary-800 flex items-center justify-between text-xs text-primary-800 dark:text-primary-300">
+            <div className="bg-primary-50 p-3 rounded-xl border border-primary-200 flex items-center justify-between text-xs text-primary-800">
               <div>
                 <span className="font-bold">📍 Rute Terdaftar Anda:</span> {selectedRoute?.route_name || 'Karawang Barat'}
               </div>
               <button
                 onClick={() => navigate('/profile')}
-                className="text-[11px] underline font-semibold text-primary-700 dark:text-primary-400 hover:text-primary-900 cursor-pointer"
+                className="text-[11px] underline font-semibold text-primary-700 hover:text-primary-900 cursor-pointer"
               >
                 Ubah di Profil
               </button>
             </div>
+
+            {/* Pickup Point Selector Card */}
+            {routeSchedule && routeSchedule.stops.length > 0 && (
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-primary-600" /> Pilih Titik Penjemputan Spesifik (Halte) <span className="text-red-500">*</span>
+                </label>
+                <p className="text-[11px] text-slate-600">
+                  Tentukan lokasi pemberhentian driver tempat Anda menunggu jemputan pada rute {selectedRoute?.route_name}.
+                </p>
+                <select
+                  value={selectedPickupPoint}
+                  onChange={(e) => setSelectedPickupPoint(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold text-slate-900 cursor-pointer"
+                >
+                  {routeSchedule.stops.map((stop) => (
+                    <option key={stop.name} value={stop.name}>
+                      📍 {stop.name} (Jam Est. {stop.time} WIB)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Booking info */}
             {selectedRoute && (
@@ -252,7 +310,7 @@ export default function BookingPage() {
               <SeatMapSkeleton />
             ) : vehicleInfo.isFull ? (
               <div className="text-center py-8">
-                <p className="text-surface-500 dark:text-surface-400 font-medium">
+                <p className="text-slate-600 font-medium">
                   Semua kursi sudah terisi penuh.
                 </p>
               </div>
@@ -298,6 +356,7 @@ export default function BookingPage() {
           departureDate={tomorrowDate}
           seatNumber={selectedSeat}
           vehicleType={vehicleInfo.vehicleType}
+          pickupPoint={selectedPickupPoint}
         />
       )}
     </div>

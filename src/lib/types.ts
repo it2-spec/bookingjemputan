@@ -21,6 +21,7 @@ export interface Employee {
   role: UserRole;
   assigned_route_id?: string | null;
   assigned_route_name?: string | null;
+  default_pickup_point?: string | null;
   route_change_status?: 'pending' | 'none';
   created_at: string;
 }
@@ -69,6 +70,7 @@ export interface Booking {
   departure_date: string; // 'YYYY-MM-DD'
   seat_number: number;
   vehicle_type: VehicleType;
+  pickup_point?: string | null;
   status: BookingStatus;
   created_at: string;
   cancelled_at: string | null;

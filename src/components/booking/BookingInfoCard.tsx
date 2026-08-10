@@ -37,11 +37,11 @@ export function BookingInfoCard({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <MapPin className="w-4 h-4 text-primary-500" />
-            <h3 className="font-bold text-surface-900 dark:text-surface-100 font-[family-name:var(--font-display)]">
+            <h3 className="font-bold text-slate-900 font-[family-name:var(--font-display)]">
               {routeName}
             </h3>
           </div>
-          <p className="text-sm text-surface-500 dark:text-surface-400 ml-6">
+          <p className="text-sm text-slate-600 ml-6">
             {formatDateIndonesian(departureDate)}
           </p>
         </div>
@@ -72,12 +72,12 @@ export function BookingInfoCard({
         </div>
 
         {/* Booking deadline */}
-        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-          <p className="text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <p className="text-xs text-amber-800">
             {isClosed
               ? 'Booking telah ditutup untuk tanggal ini.'
-              : 'Batas booking: 20:00 WIB hari ini'}
+              : 'Batas booking: 19:00 WIB hari ini'}
           </p>
         </div>
       </div>
@@ -98,17 +98,16 @@ function InfoItem({
 }) {
   return (
     <div className="flex items-start gap-2">
-      <div className="text-surface-400 dark:text-surface-500 mt-0.5">{icon}</div>
+      <div className="text-slate-500 mt-0.5">{icon}</div>
       <div>
-        <p className="text-[10px] text-surface-500 dark:text-surface-400 uppercase tracking-wide">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
           {label}
         </p>
         <p
-          className={`text-sm font-semibold ${
-            highlight
-              ? 'text-amber-600 dark:text-amber-400'
-              : 'text-surface-800 dark:text-surface-200'
-          }`}
+          className={`text-sm font-semibold ${highlight
+              ? 'text-amber-600'
+              : 'text-slate-900'
+            }`}
         >
           {value}
         </p>

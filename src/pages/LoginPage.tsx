@@ -50,12 +50,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/50 to-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary-700/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-primary-600/15 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-primary-500/10 rounded-full blur-2xl" />
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary-100/40 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-blue-100/40 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-indigo-100/30 rounded-full blur-2xl" />
       </div>
 
       {/* Content */}
@@ -71,7 +71,7 @@ export default function LoginPage() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-white/10 backdrop-blur-sm border border-white/20 mb-4"
+            className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-primary-600 text-white shadow-lg shadow-primary-600/30 mb-4"
           >
             <Bus className="w-10 h-10 text-white" />
           </motion.div>
@@ -79,7 +79,7 @@ export default function LoginPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-3xl font-bold text-white font-[family-name:var(--font-display)]"
+            className="text-3xl font-extrabold text-slate-900 font-[family-name:var(--font-display)] tracking-tight"
           >
             Shuttle Booking
           </motion.h1>
@@ -87,7 +87,7 @@ export default function LoginPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="text-primary-200 mt-2 text-sm"
+            className="text-slate-700 mt-2 text-sm font-semibold"
           >
             Reservasi shuttle karyawan harian
           </motion.p>
@@ -98,12 +98,12 @@ export default function LoginPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.5 }}
-          className="bg-white dark:bg-surface-900 rounded-3xl p-6 shadow-float"
+          className="bg-white rounded-3xl p-6 shadow-2xl border border-slate-300 space-y-2"
         >
-          <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-1 font-[family-name:var(--font-display)]">
+          <h2 className="text-xl font-extrabold text-slate-900 font-[family-name:var(--font-display)]">
             Masuk
           </h2>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mb-6">
+          <p className="text-sm font-semibold text-slate-700 mb-6">
             Masukkan NIK Anda untuk melanjutkan
           </p>
 
@@ -134,7 +134,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-xs text-surface-400 dark:text-surface-500 mt-6">
+          <p className="text-center text-xs text-slate-700 font-semibold pt-3">
             Hubungi Admin jika Anda belum terdaftar
           </p>
         </motion.div>
@@ -144,7 +144,7 @@ export default function LoginPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
-          className="text-center text-xs text-primary-300/60 mt-8"
+          className="text-center text-xs text-slate-700 mt-8 font-bold"
         >
           © 2026 Shuttle Booking v1.0
         </motion.p>
