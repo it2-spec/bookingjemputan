@@ -76,35 +76,33 @@ export default function HomePage() {
 
   // Fetch Assigned Driver for the active booking route
   useEffect(() => {
-    if (!activeBooking?.route_id) return;
+    if (!activeBooking?.route_id || !activeBooking?.departure_date) return;
 
     const fetchAssignedDriver = async () => {
       try {
-        // 1. Check if Admin assigned a driver in invoice_daily_overrides for this date & route
-        if (activeBooking.departure_date) {
-          const { data: overrideData } = await supabase
-            .from('invoice_daily_overrides')
-            .select('assigned_driver_id')
-            .eq('departure_date', activeBooking.departure_date)
-            .eq('route_id', activeBooking.route_id)
+        // 1. Check if Admin explicitly assigned a driver for this specific date & route
+        const { data: overrideData } = await supabase
+          .from('invoice_daily_overrides')
+          .select('assigned_driver_id')
+          .eq('departure_date', activeBooking.departure_date)
+          .eq('route_id', activeBooking.route_id)
+          .maybeSingle();
+
+        if (overrideData?.assigned_driver_id) {
+          const { data: driverEmp } = await supabase
+            .from('employees')
+            .select('name, phone, nik')
+            .eq('id', overrideData.assigned_driver_id)
             .maybeSingle();
 
-          if (overrideData?.assigned_driver_id) {
-            const { data: driverEmp } = await supabase
-              .from('employees')
-              .select('name, phone, nik')
-              .eq('id', overrideData.assigned_driver_id)
-              .maybeSingle();
-
-            if (driverEmp) {
-              setRouteDriver(driverEmp);
-              return;
-            }
+          if (driverEmp) {
+            setRouteDriver(driverEmp);
+            return;
           }
         }
 
-        // 2. Check permanently assigned driver (assigned_route_id = route_id)
-        const { data: routeEmpDriver } = await supabase
+        // 2. Check if driver has a permanent default route assigned in employees table
+        const { data: defaultRouteDriver } = await supabase
           .from('employees')
           .select('name, phone, nik')
           .eq('role', 'driver')
@@ -112,32 +110,12 @@ export default function HomePage() {
           .limit(1)
           .maybeSingle();
 
-        if (routeEmpDriver) {
-          setRouteDriver(routeEmpDriver);
+        if (defaultRouteDriver) {
+          setRouteDriver(defaultRouteDriver);
           return;
         }
 
-        // 3. Fallback: get driver from driver_locations
-        const { data: locData } = await supabase
-          .from('driver_locations')
-          .select('driver_id')
-          .eq('route_id', activeBooking.route_id)
-          .limit(1)
-          .maybeSingle();
-
-        if (locData?.driver_id) {
-          const { data: locDriver } = await supabase
-            .from('employees')
-            .select('name, phone, nik')
-            .eq('id', locData.driver_id)
-            .maybeSingle();
-
-          if (locDriver) {
-            setRouteDriver(locDriver);
-            return;
-          }
-        }
-
+        // No driver assigned yet for this route & date
         setRouteDriver(null);
       } catch (e) {
         console.error('Error fetching driver info:', e);

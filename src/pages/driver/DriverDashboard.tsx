@@ -47,21 +47,22 @@ export function DriverDashboard() {
         setRoutes(routeData as Route[]);
       }
 
-      // 2. Check if Admin explicitly assigned this driver in invoice_daily_overrides today
-      const { data: overrideData } = await supabase
+      // 2. Check if Admin assigned this driver in invoice_daily_overrides (today or upcoming date)
+      const { data: overrideList } = await supabase
         .from('invoice_daily_overrides')
-        .select('route_id, route:routes(route_name)')
-        .eq('departure_date', todayStr)
+        .select('route_id, departure_date, route:routes(route_name)')
         .eq('assigned_driver_id', employee.id)
-        .maybeSingle();
+        .order('departure_date', { ascending: false });
 
       let targetRouteId = '';
 
-      if (overrideData?.route_id) {
-        targetRouteId = overrideData.route_id;
+      if (overrideList && overrideList.length > 0) {
+        // Match today's assignment first, or latest assignment
+        const todayOverride = overrideList.find((o) => o.departure_date === todayStr);
+        const activeOverride = todayOverride || overrideList[0];
+        targetRouteId = activeOverride.route_id;
         setIsRouteLocked(true);
       } else if (employee.assigned_route_id) {
-        // Fallback to permanent assigned_route_id of the employee driver
         targetRouteId = employee.assigned_route_id;
         setIsRouteLocked(true);
       } else {

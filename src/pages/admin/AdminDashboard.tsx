@@ -403,11 +403,26 @@ export default function AdminDashboard() {
                             className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
                           >
                             <option value="">-- Pilih Supir Rute --</option>
-                            {availableDrivers.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                👨‍✈️ {d.name} {d.phone ? `(${d.phone})` : ''}
-                              </option>
-                            ))}
+                            {availableDrivers.map((d) => {
+                              // Find if this driver is assigned to another route on selectedDate
+                              const assignedOtherRouteId = Object.entries(routeDrivers).find(
+                                ([rId, drvId]) => drvId === d.id && rId !== stat.route.id
+                              )?.[0];
+
+                              const assignedOtherRouteObj = routes?.find((r) => r.id === assignedOtherRouteId);
+                              const isAssignedElsewhere = !!assignedOtherRouteObj;
+
+                              return (
+                                <option
+                                  key={d.id}
+                                  value={d.id}
+                                  disabled={isAssignedElsewhere}
+                                >
+                                  👨‍✈️ {d.name} {d.phone ? `(${d.phone})` : ''}
+                                  {isAssignedElsewhere ? ` 🚫 [Bertugas di ${assignedOtherRouteObj?.route_name}]` : ''}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
 
