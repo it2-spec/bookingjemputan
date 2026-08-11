@@ -32,24 +32,61 @@ export function DriverDashboard() {
     navigate('/login', { replace: true });
   };
 
-  // Fetch available routes and today's passengers
+  const [isRouteLocked, setIsRouteLocked] = useState(false);
+  const [assignedRouteName, setAssignedRouteName] = useState<string>('');
+
+  // Fetch available routes, assigned route for this driver, and today's passengers
   const fetchData = useCallback(async () => {
+    if (!employee) return;
     setLoading(true);
     try {
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // 1. Fetch routes
       const { data: routeData } = await supabase.from('routes').select('*');
       if (routeData) {
         setRoutes(routeData as Route[]);
-        if (routeData.length > 0 && !selectedRouteId) {
-          setSelectedRouteId(routeData[0].id);
-        }
       }
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      // 2. Check if Admin explicitly assigned this driver in invoice_daily_overrides today
+      const { data: overrideData } = await supabase
+        .from('invoice_daily_overrides')
+        .select('route_id, route:routes(route_name)')
+        .eq('departure_date', todayStr)
+        .eq('assigned_driver_id', employee.id)
+        .maybeSingle();
+
+      let targetRouteId = '';
+      let targetRouteName = '';
+
+      if (overrideData?.route_id) {
+        targetRouteId = overrideData.route_id;
+        targetRouteName = (overrideData as any).route?.route_name || '';
+        setIsRouteLocked(true);
+      } else if (employee.assigned_route_id) {
+        // Fallback to permanent assigned_route_id of the employee driver
+        targetRouteId = employee.assigned_route_id;
+        const matched = routeData?.find((r) => r.id === employee.assigned_route_id);
+        targetRouteName = matched?.route_name || '';
+        setIsRouteLocked(true);
+      } else {
+        setIsRouteLocked(false);
+      }
+
+      if (targetRouteId) {
+        setSelectedRouteId(targetRouteId);
+        setAssignedRouteName(targetRouteName);
+      } else if (routeData && routeData.length > 0 && !selectedRouteId) {
+        setSelectedRouteId(routeData[0].id);
+      }
+
+      // 3. Fetch today's confirmed bookings for passengers list
       const { data: bookingData } = await supabase
         .from('bookings')
         .select('*, employee:employees(*), route:routes(*)')
         .eq('departure_date', todayStr)
-        .eq('status', 'confirmed');
+        .eq('status', 'confirmed')
+        .order('seat_number', { ascending: true });
 
       if (bookingData) {
         setTodaysBookings(bookingData as BookingWithDetails[]);
@@ -60,7 +97,7 @@ export function DriverDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [selectedRouteId]);
+  }, [employee, selectedRouteId]);
 
   useEffect(() => {
     fetchData();
@@ -208,17 +245,29 @@ export function DriverDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-slate-800 block mb-1">
-                Rute Operasional Hari Ini
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-800 block">
+                  Rute Operasional Hari Ini
+                </label>
+                {isRouteLocked && (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    🔒 Terkunci oleh Admin
+                  </span>
+                )}
+              </div>
               <select
                 value={selectedRouteId}
+                disabled={isRouteLocked}
                 onChange={(e) => setSelectedRouteId(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                className={`w-full px-3 py-2 text-sm rounded-xl border focus:ring-2 focus:ring-emerald-500 font-bold text-slate-900 ${
+                  isRouteLocked
+                    ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
+                    : 'bg-white border-slate-300 cursor-pointer'
+                }`}
               >
                 {routes.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.route_name} ({r.departure_time})
+                    🚌 {r.route_name} ({r.departure_time} WIB)
                   </option>
                 ))}
               </select>

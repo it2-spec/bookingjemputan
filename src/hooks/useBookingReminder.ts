@@ -19,17 +19,18 @@ import {
 import { getTomorrowDate } from '../lib/vehicleLogic';
 import { supabase } from '../lib/supabase';
 
-// Reminder schedule in WIB (UTC+7)
+// Reminder schedule: 18:00 WIB + Test Time 11:48 WIB
 const REMINDER_TIMES_WIB = [
+  { hour: 11, minute: 55 },
   { hour: 17, minute: 0 },
   { hour: 17, minute: 30 },
   { hour: 18, minute: 0 },
-  { hour: 18, minute: 30 },
 ];
 
 function getWIBDate(): Date {
   const now = new Date();
-  return new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  return new Date(utc + 7 * 3600000);
 }
 
 function todayDateString(): string {
@@ -55,8 +56,6 @@ export function useBookingReminder() {
       let permission = Notification.permission;
 
       if (permission === 'default') {
-        // Delay slightly so user has a chance to see the app first
-        await new Promise((r) => setTimeout(r, 5000));
         permission = await requestNotificationPermission();
       }
 
@@ -86,39 +85,37 @@ export function useBookingReminder() {
     };
   }, [isAuthenticated]);
 
-  // 3. Scheduled local reminder (for devices with app open)
+  // 3. Scheduled automatic reminder check (runs every 5 seconds)
   useEffect(() => {
     if (!isAuthenticated || !employee) return;
-    if (Notification.permission !== 'granted') return;
 
     const checkAndNotify = () => {
-      if (activeBooking) return;
-
-      const today = todayDateString();
-      if (hasReminderBeenShown(today)) return;
-
       const wibNow = getWIBDate();
-      const currentHour = wibNow.getUTCHours();
-      const currentMinute = wibNow.getUTCMinutes();
+      const currentHour = wibNow.getHours();
+      const currentMinute = wibNow.getMinutes();
 
-      const shouldNotify = REMINDER_TIMES_WIB.some(
-        (t) => t.hour === currentHour && Math.abs(t.minute - currentMinute) <= 1,
+      // Check if current time matches 11:48 or 18:00 WIB
+      const isTargetTime = REMINDER_TIMES_WIB.some(
+        (t) => t.hour === currentHour && t.minute === currentMinute
       );
 
-      if (shouldNotify) {
-        markReminderShown(today);
-        showLocalNotification(
-          '🚌 Pengingat Booking Jemputan',
-          `Hei ${employee.name.split(' ')[0]}, Anda belum memesan jemputan untuk besok! Batas pemesanan jam 20:00 WIB.`,
-        );
+      if (isTargetTime) {
+        const key = `reminder_test_${currentHour}_${currentMinute}`;
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, 'true');
+          showLocalNotification(
+            '🚨 Pengingat: Booking Jemputan Tutup Jam 19:00 WIB!',
+            `Halo ${employee.name.split(' ')[0]}, pemesanan jemputan untuk besok akan DITUTUP pukul 19:00 WIB! Segera lakukan booking sekarang.`,
+          );
+        }
       }
     };
 
-    scheduledRef.current = setInterval(checkAndNotify, 30_000);
+    scheduledRef.current = setInterval(checkAndNotify, 5000);
     checkAndNotify();
 
     return () => {
       if (scheduledRef.current) clearInterval(scheduledRef.current);
     };
-  }, [isAuthenticated, employee, activeBooking]);
+  }, [isAuthenticated, employee]);
 }
