@@ -10,6 +10,8 @@ interface PassengerLiveTrackerModalProps {
   onClose: () => void;
   routeName: string;
   routeId: string;
+  assignedDriverName?: string;
+  assignedDriverPhone?: string;
 }
 
 const DEFAULT_STATIONS: Record<string, [number, number]> = {
@@ -25,6 +27,8 @@ export function PassengerLiveTrackerModal({
   onClose,
   routeName,
   routeId,
+  assignedDriverName,
+  assignedDriverPhone,
 }: PassengerLiveTrackerModalProps) {
   const [driverLoc, setDriverLoc] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,26 +103,47 @@ export function PassengerLiveTrackerModal({
     });
   }
 
-  const driverPhone = (driverLoc as any)?.driver?.phone || '081299992001';
+  const displayDriverName = assignedDriverName || (driverLoc as any)?.driver?.name || 'Driver Shuttle';
+  const displayDriverPhone = assignedDriverPhone || (driverLoc as any)?.driver?.phone || '081299992001';
 
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="🚌 Real-Time Live Tracking Shuttle">
       <div className="space-y-4">
         {/* Status Header */}
-        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-              {driverLoc ? `Driver Aktif (${driverLoc.status.replace(/_/g, ' ')})` : 'Mencari Lokasi Driver...'}
-            </span>
-          </div>
-          <button
-            onClick={fetchDriverLocation}
-            className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+        {(() => {
+          const isOnline = driverLoc && ['active', 'heading_to_pickup', 'in_transit'].includes(driverLoc.status);
+          return (
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between transition-colors ${
+                isOnline
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isOnline ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'
+                  }`}
+                />
+                <span className="text-xs font-bold">
+                  {isOnline
+                    ? `🟢 Live Online (${driverLoc?.status.replace(/_/g, ' ')})`
+                    : driverLoc
+                    ? `⚪ Driver Offline (${driverLoc.status})`
+                    : '⚪ Driver Belum Membuka Sesi Perjalanan'}
+                </span>
+              </div>
+              <button
+                onClick={fetchDriverLocation}
+                className="p-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700 cursor-pointer"
+                title="Refresh Lokasi Driver"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Live Leaflet Map */}
         <LiveMap
@@ -129,38 +154,32 @@ export function PassengerLiveTrackerModal({
         />
 
         {/* Driver Card Info (Gojek Style) */}
-        {driverLoc ? (
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow">
-                🚌
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                  {(driverLoc as any).driver?.name || 'Pak Bambang (Driver)'}
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                </h4>
-                <p className="text-[11px] text-slate-600">
-                  Rute: {routeName} • Update: {new Date(driverLoc.updated_at).toLocaleTimeString('id-ID')} WIB
-                </p>
-              </div>
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow">
+              🚌
             </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                {displayDriverName}
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              </h4>
+              <p className="text-[11px] text-slate-600">
+                Rute: {routeName} {driverLoc ? `• Update: ${new Date(driverLoc.updated_at).toLocaleTimeString('id-ID')} WIB` : ''}
+              </p>
+            </div>
+          </div>
 
-            <a
-              href={`https://wa.me/${driverPhone.replace(/^0/, '62')}`}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-md transition-colors"
-            >
-              <Phone className="w-3.5 h-3.5" /> WA Driver
-            </a>
-          </div>
-        ) : (
-          <div className="p-3 bg-slate-100 rounded-xl text-center text-xs text-slate-700 flex items-center justify-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-500" />
-            <span>Driver belum mengaktifkan GPS live tracking untuk trip ini.</span>
-          </div>
-        )}
+          <a
+            href={`https://wa.me/${displayDriverPhone.replace(/[^0-9]/g, '')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-md transition-colors"
+          >
+            <Phone className="w-3.5 h-3.5" /> WA Driver
+          </a>
+        </div>
+
 
         <div className="text-[10px] text-slate-500 text-center">
           * Posisi driver diperbarui secara real-time dari konsol GPS driver.

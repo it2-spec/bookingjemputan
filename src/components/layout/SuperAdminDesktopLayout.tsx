@@ -13,6 +13,7 @@ import {
   Bell,
   Search,
   SlidersHorizontal,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -21,6 +22,7 @@ const superAdminNav = [
   { path: '/superadmin/approvals', label: 'Approval Rute Penumpang', icon: CheckSquare, badge: 'New' },
   { path: '/superadmin/drivers', label: 'Live Location Driver', icon: Navigation },
   { path: '/superadmin/passengers', label: 'Daftar Karyawan / Driver', icon: Users },
+  { path: '/superadmin/invoice', label: 'Rekap Invoice Armada', icon: FileText },
 ];
 
 export function SuperAdminDesktopLayout() {

@@ -16,6 +16,8 @@ import {
   Shield,
   XCircle,
   Navigation,
+  Phone,
+  UserCheck,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -36,6 +38,7 @@ import {
   getVehicleType,
 } from '../lib/vehicleLogic';
 import { getGreeting, getVehicleIcon, padZero, cn } from '../lib/utils';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 export default function HomePage() {
@@ -61,6 +64,7 @@ export default function HomePage() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showVisualMapDialog, setShowVisualMapDialog] = useState(false);
   const [showLiveDriverTracker, setShowLiveDriverTracker] = useState(false);
+  const [routeDriver, setRouteDriver] = useState<{ name: string; phone: string; nik: string } | null>(null);
   const cancelBooking = useCancelBooking();
 
   useEffect(() => {
@@ -69,6 +73,95 @@ export default function HomePage() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch Assigned Driver for the active booking route
+  useEffect(() => {
+    if (!activeBooking?.route_id) return;
+
+    const fetchAssignedDriver = async () => {
+      try {
+        // 1. Check if Admin assigned a driver in invoice_daily_overrides for this date & route
+        if (activeBooking.departure_date) {
+          const { data: overrideData } = await supabase
+            .from('invoice_daily_overrides')
+            .select('assigned_driver_id')
+            .eq('departure_date', activeBooking.departure_date)
+            .eq('route_id', activeBooking.route_id)
+            .maybeSingle();
+
+          if (overrideData?.assigned_driver_id) {
+            const { data: driverEmp } = await supabase
+              .from('employees')
+              .select('name, phone, nik')
+              .eq('id', overrideData.assigned_driver_id)
+              .maybeSingle();
+
+            if (driverEmp) {
+              setRouteDriver(driverEmp);
+              return;
+            }
+          }
+        }
+
+        // 2. Check permanently assigned driver (assigned_route_id = route_id)
+        const { data: routeEmpDriver } = await supabase
+          .from('employees')
+          .select('name, phone, nik')
+          .eq('role', 'driver')
+          .eq('assigned_route_id', activeBooking.route_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (routeEmpDriver) {
+          setRouteDriver(routeEmpDriver);
+          return;
+        }
+
+        // 3. Fallback: get driver from driver_locations
+        const { data: locData } = await supabase
+          .from('driver_locations')
+          .select('driver_id')
+          .eq('route_id', activeBooking.route_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (locData?.driver_id) {
+          const { data: locDriver } = await supabase
+            .from('employees')
+            .select('name, phone, nik')
+            .eq('id', locData.driver_id)
+            .maybeSingle();
+
+          if (locDriver) {
+            setRouteDriver(locDriver);
+            return;
+          }
+        }
+
+        setRouteDriver(null);
+      } catch (e) {
+        console.error('Error fetching driver info:', e);
+      }
+    };
+
+    fetchAssignedDriver();
+
+    // Subscribe to realtime changes in invoice_daily_overrides
+    const channel = supabase
+      .channel('driver-assignment-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'invoice_daily_overrides' },
+        () => {
+          fetchAssignedDriver();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeBooking?.route_id, activeBooking?.departure_date]);
 
   const bookingOpen = isBookingOpen();
 
@@ -255,6 +348,43 @@ export default function HomePage() {
                 <div className="p-2 bg-slate-100 rounded-lg text-xs flex items-center gap-1.5 text-slate-700">
                   <MapPin className="w-3.5 h-3.5 text-primary-500 shrink-0" />
                   <span><strong>Halte Jemput:</strong> {activeBooking.pickup_point}</span>
+                </div>
+              )}
+
+              {/* Driver Information Card */}
+              {routeDriver ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                      👨‍✈️
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 flex items-center gap-1">
+                        <UserCheck className="w-3 h-3" /> Supir Jemputan Anda
+                      </p>
+                      <p className="text-xs font-bold text-slate-900">{routeDriver.name}</p>
+                    </div>
+                  </div>
+                  {routeDriver.phone && (
+                    <a
+                      href={`https://wa.me/${routeDriver.phone.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                      title="Hubungi Supir via WhatsApp"
+                    >
+                      <Phone className="w-3 h-3" /> Hubungi
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    👨‍✈️ Supir: <strong className="text-amber-900 font-semibold">Belum ditugaskan oleh Admin</strong>
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-mono font-medium">
+                    Menunggu Konfirmasi
+                  </span>
                 </div>
               )}
 
@@ -469,6 +599,8 @@ export default function HomePage() {
           onClose={() => setShowLiveDriverTracker(false)}
           routeName={(activeBooking as any).route?.route_name || 'Karawang Barat'}
           routeId={activeBooking.route_id}
+          assignedDriverName={routeDriver?.name}
+          assignedDriverPhone={routeDriver?.phone || undefined}
         />
       )}
     </div>

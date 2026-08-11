@@ -25,6 +25,7 @@ import AdminRouteApprovalList from './pages/admin/AdminRouteApprovalList';
 import { DriverDashboard } from './pages/driver/DriverDashboard';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
 import SuperAdminPassengers from './pages/superadmin/SuperAdminPassengers';
+import SuperAdminInvoice from './pages/superadmin/SuperAdminInvoice';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
       { path: 'approvals', element: <AdminRouteApprovalList /> },
       { path: 'drivers', element: <DriverDashboard /> },
       { path: 'passengers', element: <SuperAdminPassengers /> },
+      { path: 'invoice', element: <SuperAdminInvoice /> },
     ],
   },
 ]);

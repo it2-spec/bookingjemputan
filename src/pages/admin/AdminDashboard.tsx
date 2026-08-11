@@ -2,7 +2,7 @@
 // Admin Dashboard Page
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -42,6 +42,9 @@ export default function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(getTomorrowDate());
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<{ route: Route; vehicleType: VehicleType } | null>(null);
   const [adminSelectedUnit, setAdminSelectedUnit] = useState<number>(1);
+  const [routeOverrides, setRouteOverrides] = useState<Record<string, boolean>>({}); // route_id -> is_billable
+  const [routeDrivers, setRouteDrivers] = useState<Record<string, string>>({}); // route_id -> driver_employee_id
+  const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null }[]>([]);
   const { data: routes, isLoading: routesLoading, refetch: refetchRoutes } = useRoutes();
   const { data: bookings = [], isLoading: bookingsLoading, refetch } = useAdminBookings(selectedDate);
 
@@ -135,6 +138,82 @@ export default function AdminDashboard() {
       refetch();
     } catch (err: any) {
       toast.error(err.message || 'Gagal mengubah setting armada.');
+    }
+  };
+
+  // Fetch overrides and drivers for selected date
+  const fetchDateOverridesAndDrivers = async () => {
+    // 1. Fetch available drivers
+    const { data: dList } = await supabase
+      .from('employees')
+      .select('id, name, phone')
+      .eq('role', 'driver')
+      .order('name', { ascending: true });
+
+    if (dList) setAvailableDrivers(dList as any[]);
+
+    // 2. Fetch overrides & assigned drivers
+    const { data } = await supabase
+      .from('invoice_daily_overrides')
+      .select('route_id, is_billable, assigned_driver_id')
+      .eq('departure_date', selectedDate);
+
+    const billableMap: Record<string, boolean> = {};
+    const driverMap: Record<string, string> = {};
+    if (data) {
+      data.forEach((item: any) => {
+        billableMap[item.route_id] = item.is_billable;
+        if (item.assigned_driver_id) {
+          driverMap[item.route_id] = item.assigned_driver_id;
+        }
+      });
+    }
+    setRouteOverrides(billableMap);
+    setRouteDrivers(driverMap);
+  };
+
+  useEffect(() => {
+    fetchDateOverridesAndDrivers();
+  }, [selectedDate]);
+
+  const handleAssignDriverToRoute = async (routeId: string, driverId: string) => {
+    try {
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: selectedDate,
+          route_id: routeId,
+          assigned_driver_id: driverId || null,
+          is_billable: routeOverrides[routeId] ?? true,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
+      if (error) throw error;
+      toast.success('Supir rute berhasil ditugaskan! 👨‍✈️');
+      fetchDateOverridesAndDrivers();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menugaskan supir');
+    }
+  };
+
+  const handleToggleRouteBillable = async (routeId: string, currentIsBillable: boolean) => {
+    try {
+      const newStatus = !currentIsBillable;
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: selectedDate,
+          route_id: routeId,
+          is_billable: newStatus,
+          note: newStatus ? null : 'Driver / Mobil Sendiri',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
+      if (error) throw error;
+      toast.success(newStatus ? 'Set ke: Sewa Vendor (Invoice)' : 'Set ke: Driver Sendiri (Rp 0)');
+      fetchDateOverrides();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengubah status sumber armada');
     }
   };
 
@@ -312,6 +391,45 @@ export default function AdminDashboard() {
                           <option value="Elf Short_2">🚌🚌 2x Elf Short (2 Unit Split - Max 28 Kursi)</option>
                           <option value="Elf Long_1">🚐 1x Elf Long (Max 16 Kursi)</option>
                         </select>
+                      </div>
+
+                      {/* Source Vendor vs Internal Driver Selector */}
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-600 font-medium">Supir / Driver:</span>
+                          <select
+                            value={routeDrivers[stat.route.id] || ''}
+                            onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value)}
+                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
+                          >
+                            <option value="">-- Pilih Supir Rute --</option>
+                            {availableDrivers.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                👨‍✈️ {d.name} {d.phone ? `(${d.phone})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-600 font-medium">Sumber Armada:</span>
+                          {(() => {
+                            const isBillable = routeOverrides[stat.route.id] ?? true;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleRouteBillable(stat.route.id, isBillable)}
+                                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer flex items-center gap-1 ${
+                                  isBillable
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                }`}
+                              >
+                                {isBillable ? '💳 Sewa Vendor (Masuk Invoice)' : '🏢 Driver Sendiri / PT (Rp 0)'}
+                              </button>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
                   </div>
