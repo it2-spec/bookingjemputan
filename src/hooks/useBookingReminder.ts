@@ -7,23 +7,17 @@
 
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useActiveBooking } from './useBooking';
 import {
   subscribeToPush,
   showLocalNotification,
-  markReminderShown,
-  hasReminderBeenShown,
   isPushSupported,
   requestNotificationPermission,
 } from '../lib/notificationService';
-import { getTomorrowDate } from '../lib/vehicleLogic';
 import { supabase } from '../lib/supabase';
 
-// Reminder schedule: 18:00 WIB + Test Time 11:48 WIB
+// Reminder schedule: 18:00 WIB + Test Time 11:55 WIB
 const REMINDER_TIMES_WIB = [
   { hour: 11, minute: 55 },
-  { hour: 17, minute: 0 },
-  { hour: 17, minute: 30 },
   { hour: 18, minute: 0 },
 ];
 
@@ -33,14 +27,8 @@ function getWIBDate(): Date {
   return new Date(utc + 7 * 3600000);
 }
 
-function todayDateString(): string {
-  return getWIBDate().toISOString().split('T')[0];
-}
-
 export function useBookingReminder() {
   const { employee, isAuthenticated } = useAuth();
-  const tomorrowDate = getTomorrowDate();
-  const { data: activeBooking } = useActiveBooking(employee?.id || null, tomorrowDate);
   const scheduledRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const permissionRequestedRef = useRef(false);
   const subscribedRef = useRef(false);
