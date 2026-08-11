@@ -211,7 +211,7 @@ export default function AdminDashboard() {
 
       if (error) throw error;
       toast.success(newStatus ? 'Set ke: Sewa Vendor (Invoice)' : 'Set ke: Driver Sendiri (Rp 0)');
-      fetchDateOverrides();
+      fetchDateOverridesAndDrivers();
     } catch (err: any) {
       toast.error(err.message || 'Gagal mengubah status sumber armada');
     }

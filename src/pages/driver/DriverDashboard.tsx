@@ -33,7 +33,6 @@ export function DriverDashboard() {
   };
 
   const [isRouteLocked, setIsRouteLocked] = useState(false);
-  const [assignedRouteName, setAssignedRouteName] = useState<string>('');
 
   // Fetch available routes, assigned route for this driver, and today's passengers
   const fetchData = useCallback(async () => {
@@ -57,17 +56,13 @@ export function DriverDashboard() {
         .maybeSingle();
 
       let targetRouteId = '';
-      let targetRouteName = '';
 
       if (overrideData?.route_id) {
         targetRouteId = overrideData.route_id;
-        targetRouteName = (overrideData as any).route?.route_name || '';
         setIsRouteLocked(true);
       } else if (employee.assigned_route_id) {
         // Fallback to permanent assigned_route_id of the employee driver
         targetRouteId = employee.assigned_route_id;
-        const matched = routeData?.find((r) => r.id === employee.assigned_route_id);
-        targetRouteName = matched?.route_name || '';
         setIsRouteLocked(true);
       } else {
         setIsRouteLocked(false);
@@ -75,7 +70,6 @@ export function DriverDashboard() {
 
       if (targetRouteId) {
         setSelectedRouteId(targetRouteId);
-        setAssignedRouteName(targetRouteName);
       } else if (routeData && routeData.length > 0 && !selectedRouteId) {
         setSelectedRouteId(routeData[0].id);
       }

@@ -3,7 +3,7 @@ import { Dialog } from '../ui/Dialog';
 import { LiveMap, type MarkerLocation } from '../maps/LiveMap';
 import { supabase } from '../../lib/supabase';
 import type { DriverLocation } from '../../lib/types';
-import { Phone, RefreshCw, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Phone, RefreshCw, ShieldCheck } from 'lucide-react';
 
 interface PassengerLiveTrackerModalProps {
   isOpen: boolean;
