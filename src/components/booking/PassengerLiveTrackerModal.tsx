@@ -4,6 +4,7 @@ import { LiveMap, type MarkerLocation } from '../maps/LiveMap';
 import { supabase } from '../../lib/supabase';
 import type { DriverLocation } from '../../lib/types';
 import { Phone, RefreshCw, ShieldCheck } from 'lucide-react';
+import { getTodayDate } from '../../lib/vehicleLogic';
 
 interface PassengerLiveTrackerModalProps {
   isOpen: boolean;
@@ -15,8 +16,6 @@ interface PassengerLiveTrackerModalProps {
 }
 
 const DEFAULT_STATIONS: Record<string, [number, number]> = {
-  'Karawang Barat 1': [-6.276592879810661, 107.27324066001847],
-  'Karawang Barat 2': [-6.276592879810661, 107.27324066001847],
   'Karawang Barat': [-6.276592879810661, 107.27324066001847],
   'Karawang Timur': [-6.2830973278683935, 107.45715106568662],
   'Cikampek': [-6.370380867733877, 107.37704813870378],
@@ -33,11 +32,18 @@ export function PassengerLiveTrackerModal({
   const [driverLoc, setDriverLoc] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const hasAssignedDriver = Boolean(assignedDriverName);
+
   const fetchDriverLocation = async () => {
+    if (!hasAssignedDriver) {
+      setDriverLoc(null);
+      return;
+    }
+
     setLoading(true);
     try {
-      // Fetch latest active location for driver assigned to this route or latest active driver
-      let { data } = await supabase
+      // Fetch latest active location for driver assigned to this route
+      const { data } = await supabase
         .from('driver_locations')
         .select('*, driver:employees(name, nik, phone)')
         .eq('route_id', routeId)
@@ -45,18 +51,27 @@ export function PassengerLiveTrackerModal({
         .limit(1)
         .maybeSingle();
 
-      if (!data) {
-        // Fallback: get any active driver location
-        const { data: fallbackData } = await supabase
-          .from('driver_locations')
-          .select('*, driver:employees(name, nik, phone)')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        data = fallbackData;
-      }
+      if (data && data.updated_at) {
+        // Convert updated_at to YYYY-MM-DD in WIB timezone
+        const updateTime = new Date(data.updated_at);
+        const utc = updateTime.getTime() + updateTime.getTimezoneOffset() * 60000;
+        const wibDate = new Date(utc + 7 * 3600000);
+        const year = wibDate.getFullYear();
+        const month = String(wibDate.getMonth() + 1).padStart(2, '0');
+        const day = String(wibDate.getDate()).padStart(2, '0');
+        const updatedDateStr = `${year}-${month}-${day}`;
 
-      if (data) setDriverLoc(data as any);
+        const todayStr = getTodayDate();
+
+        // Only display location if it was sent TODAY
+        if (updatedDateStr === todayStr) {
+          setDriverLoc(data as any);
+        } else {
+          setDriverLoc(null);
+        }
+      } else {
+        setDriverLoc(null);
+      }
     } catch (e) {
       console.log('Error fetching live driver location:', e);
     } finally {
@@ -70,7 +85,7 @@ export function PassengerLiveTrackerModal({
       const interval = setInterval(fetchDriverLocation, 5000); // Live poll every 5s
       return () => clearInterval(interval);
     }
-  }, [isOpen, routeId]);
+  }, [isOpen, routeId, hasAssignedDriver]);
 
   const mapCenter: [number, number] = driverLoc
     ? [driverLoc.latitude, driverLoc.longitude]
@@ -81,7 +96,7 @@ export function PassengerLiveTrackerModal({
   if (driverLoc) {
     mapMarkers.push({
       id: driverLoc.id,
-      title: `Driver ${(driverLoc as any).driver?.name || 'Armada Shuttle'}`,
+      title: `Driver ${(driverLoc as any).driver?.name || assignedDriverName || 'Armada Shuttle'}`,
       subtitle: `Rute: ${routeName}`,
       lat: driverLoc.latitude,
       lng: driverLoc.longitude,
@@ -103,8 +118,8 @@ export function PassengerLiveTrackerModal({
     });
   }
 
-  const displayDriverName = assignedDriverName || (driverLoc as any)?.driver?.name || 'Driver Shuttle';
-  const displayDriverPhone = assignedDriverPhone || (driverLoc as any)?.driver?.phone || '081299992001';
+  const displayDriverName = hasAssignedDriver ? assignedDriverName : 'Belum ditugaskan oleh Admin';
+  const displayDriverPhone = hasAssignedDriver ? assignedDriverPhone : null;
 
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="🚌 Real-Time Live Tracking Shuttle">
@@ -131,7 +146,9 @@ export function PassengerLiveTrackerModal({
                     ? `🟢 Live Online (${driverLoc?.status.replace(/_/g, ' ')})`
                     : driverLoc
                     ? `⚪ Driver Offline (${driverLoc.status})`
-                    : '⚪ Driver Belum Membuka Sesi Perjalanan'}
+                    : !hasAssignedDriver
+                    ? '⚪ Driver Belum Ditugaskan oleh Admin'
+                    : '⚪ Driver Belum Online Hari Ini'}
                 </span>
               </div>
               <button
@@ -162,7 +179,7 @@ export function PassengerLiveTrackerModal({
             <div>
               <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1">
                 {displayDriverName}
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                {hasAssignedDriver && <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />}
               </h4>
               <p className="text-[11px] text-slate-600">
                 Rute: {routeName} {driverLoc ? `• Update: ${new Date(driverLoc.updated_at).toLocaleTimeString('id-ID')} WIB` : ''}
@@ -170,14 +187,23 @@ export function PassengerLiveTrackerModal({
             </div>
           </div>
 
-          <a
-            href={`https://wa.me/${displayDriverPhone.replace(/[^0-9]/g, '')}`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-md transition-colors"
-          >
-            <Phone className="w-3.5 h-3.5" /> WA Driver
-          </a>
+          {displayDriverPhone ? (
+            <a
+              href={`https://wa.me/${displayDriverPhone.replace(/[^0-9]/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-md transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> WA Driver
+            </a>
+          ) : (
+            <button
+              disabled
+              className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-400 text-xs font-semibold flex items-center gap-1 cursor-not-allowed opacity-75"
+            >
+              <Phone className="w-3.5 h-3.5" /> WA Driver
+            </button>
+          )}
         </div>
 
 

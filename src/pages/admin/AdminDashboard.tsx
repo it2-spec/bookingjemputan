@@ -43,8 +43,9 @@ export default function AdminDashboard() {
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<{ route: Route; vehicleType: VehicleType } | null>(null);
   const [adminSelectedUnit, setAdminSelectedUnit] = useState<number>(1);
   const [routeOverrides, setRouteOverrides] = useState<Record<string, boolean>>({}); // route_id -> is_billable
+  const [routeInvoiceVehicles, setRouteInvoiceVehicles] = useState<Record<string, string>>({}); // route_id -> override_vehicle_type
   const [routeDrivers, setRouteDrivers] = useState<Record<string, string>>({}); // route_id -> driver_employee_id
-  const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null }[]>([]);
+  const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null; department?: string; driver_type?: 'internal' | 'vendor' | null }[]>([]);
   const { data: routes, isLoading: routesLoading, refetch: refetchRoutes } = useRoutes();
   const { data: bookings = [], isLoading: bookingsLoading, refetch } = useAdminBookings(selectedDate);
 
@@ -110,7 +111,9 @@ export default function AdminDashboard() {
     );
     const confirmedCount = routeBookings.length;
     const vehicleType = getVehicleType(confirmedCount, route.manual_vehicle_type);
-    const maxSeats = getMaxSeats(vehicleType);
+    const baseSeats = getMaxSeats(vehicleType);
+    const unitCount = route.unit_count || 1;
+    const maxSeats = baseSeats * unitCount;
 
     return {
       route,
@@ -146,74 +149,263 @@ export default function AdminDashboard() {
     // 1. Fetch available drivers
     const { data: dList } = await supabase
       .from('employees')
-      .select('id, name, phone')
+      .select('id, name, phone, department, driver_type')
       .eq('role', 'driver')
       .order('name', { ascending: true });
 
     if (dList) setAvailableDrivers(dList as any[]);
 
-    // 2. Fetch overrides & assigned drivers
+    // 2. Fetch overrides & assigned drivers & override vehicle types
     const { data } = await supabase
       .from('invoice_daily_overrides')
-      .select('route_id, is_billable, assigned_driver_id')
+      .select('route_id, is_billable, assigned_driver_id, override_vehicle_type, assigned_driver_id_unit2, assigned_driver_id_unit3, driver_assignments, is_billable_unit2, is_billable_unit3, unit_sources')
       .eq('departure_date', selectedDate);
 
     const billableMap: Record<string, boolean> = {};
     const driverMap: Record<string, string> = {};
+    const invoiceVehicleMap: Record<string, string> = {};
     if (data) {
       data.forEach((item: any) => {
         billableMap[item.route_id] = item.is_billable;
+        billableMap[`${item.route_id}_1`] = item.is_billable;
+        if (item.is_billable_unit2 !== undefined && item.is_billable_unit2 !== null) {
+          billableMap[`${item.route_id}_2`] = item.is_billable_unit2;
+        }
+        if (item.is_billable_unit3 !== undefined && item.is_billable_unit3 !== null) {
+          billableMap[`${item.route_id}_3`] = item.is_billable_unit3;
+        }
+        if (item.unit_sources && typeof item.unit_sources === 'object') {
+          Object.entries(item.unit_sources).forEach(([uKey, isBill]) => {
+            billableMap[`${item.route_id}_${uKey}`] = Boolean(isBill);
+          });
+        }
+
         if (item.assigned_driver_id) {
-          driverMap[item.route_id] = item.assigned_driver_id;
+          driverMap[`${item.route_id}_1`] = item.assigned_driver_id;
+          driverMap[item.route_id] = item.assigned_driver_id; // fallback
+        }
+        if (item.assigned_driver_id_unit2) {
+          driverMap[`${item.route_id}_2`] = item.assigned_driver_id_unit2;
+        }
+        if (item.assigned_driver_id_unit3) {
+          driverMap[`${item.route_id}_3`] = item.assigned_driver_id_unit3;
+        }
+        if (item.driver_assignments && typeof item.driver_assignments === 'object') {
+          Object.entries(item.driver_assignments).forEach(([uKey, dId]) => {
+            driverMap[`${item.route_id}_${uKey}`] = dId as string;
+          });
+        }
+        if (item.override_vehicle_type) {
+          invoiceVehicleMap[item.route_id] = item.override_vehicle_type;
         }
       });
     }
     setRouteOverrides(billableMap);
     setRouteDrivers(driverMap);
+    setRouteInvoiceVehicles(invoiceVehicleMap);
   };
 
   useEffect(() => {
     fetchDateOverridesAndDrivers();
   }, [selectedDate]);
 
-  const handleAssignDriverToRoute = async (routeId: string, driverId: string) => {
+  const handleAssignDriverToRoute = async (routeId: string, driverId: string, unitNumber: number = 1) => {
     try {
+      const currentUnit1 = unitNumber === 1 ? (driverId || null) : (routeDrivers[`${routeId}_1`] || routeDrivers[routeId] || null);
+      const currentUnit2 = unitNumber === 2 ? (driverId || null) : (routeDrivers[`${routeId}_2`] || null);
+      const currentUnit3 = unitNumber === 3 ? (driverId || null) : (routeDrivers[`${routeId}_3`] || null);
+
+      const driverAssignments = {
+        '1': currentUnit1,
+        '2': currentUnit2,
+        '3': currentUnit3,
+      };
+
+      // Auto-detect driver source type from driver attribute in database:
+      // driver_type === 'internal' -> is_billable = false (Internal PT / Rp 0)
+      // driver_type === 'vendor' -> is_billable = true (Sewa Vendor / Masuk Invoice)
+      let autoIsBillable = routeOverrides[`${routeId}_${unitNumber}`];
+      if (driverId) {
+        const selDriver = availableDrivers.find((d) => d.id === driverId);
+        if (selDriver) {
+          if (selDriver.driver_type === 'internal') {
+            autoIsBillable = false;
+          } else if (selDriver.driver_type === 'vendor') {
+            autoIsBillable = true;
+          } else {
+            // Fallback checking if driver_type is not yet filled
+            const dName = selDriver.name.toLowerCase();
+            const dDept = (selDriver.department || '').toLowerCase();
+            if (dName.includes('internal') || dDept.includes('internal')) {
+              autoIsBillable = false;
+            } else {
+              autoIsBillable = true;
+            }
+          }
+        }
+      }
+
+      const isBill1 = unitNumber === 1 && autoIsBillable !== undefined ? autoIsBillable : (routeOverrides[`${routeId}_1`] ?? routeOverrides[routeId] ?? true);
+      const isBill2 = unitNumber === 2 && autoIsBillable !== undefined ? autoIsBillable : (routeOverrides[`${routeId}_2`] ?? true);
+      const isBill3 = unitNumber === 3 && autoIsBillable !== undefined ? autoIsBillable : (routeOverrides[`${routeId}_3`] ?? true);
+
+      const payload: any = {
+        departure_date: selectedDate,
+        route_id: routeId,
+        assigned_driver_id: currentUnit1,
+        assigned_driver_id_unit2: currentUnit2,
+        assigned_driver_id_unit3: currentUnit3,
+        driver_assignments: driverAssignments,
+        is_billable: isBill1,
+        is_billable_unit2: isBill2,
+        is_billable_unit3: isBill3,
+        unit_sources: {
+          '1': isBill1,
+          '2': isBill2,
+          '3': isBill3,
+        },
+        updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from('invoice_daily_overrides')
-        .upsert({
-          departure_date: selectedDate,
-          route_id: routeId,
-          assigned_driver_id: driverId || null,
-          is_billable: routeOverrides[routeId] ?? true,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'departure_date,route_id' });
+        .upsert(payload, { onConflict: 'departure_date,route_id' });
 
-      if (error) throw error;
-      toast.success('Supir rute berhasil ditugaskan! 👨‍✈️');
+      if (error) {
+        const { error: fallbackErr } = await supabase
+          .from('invoice_daily_overrides')
+          .upsert({
+            departure_date: selectedDate,
+            route_id: routeId,
+            assigned_driver_id: currentUnit1,
+            is_billable: isBill1,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'departure_date,route_id' });
+        if (fallbackErr) throw fallbackErr;
+      }
+
+      toast.success(`Supir Unit ${unitNumber} berhasil ditugaskan! ${autoIsBillable === false ? '(🏢 Otomatis: Driver Internal Rp 0)' : autoIsBillable === true ? '(💳 Otomatis: Sewa Vendor Invoice)' : ''}`);
       fetchDateOverridesAndDrivers();
     } catch (err: any) {
       toast.error(err.message || 'Gagal menugaskan supir');
     }
   };
 
-  const handleToggleRouteBillable = async (routeId: string, currentIsBillable: boolean) => {
+  const handleSetRouteInvoiceVehicle = async (routeId: string, vehicleType: string) => {
     try {
-      const newStatus = !currentIsBillable;
       const { error } = await supabase
         .from('invoice_daily_overrides')
         .upsert({
           departure_date: selectedDate,
           route_id: routeId,
-          is_billable: newStatus,
-          note: newStatus ? null : 'Driver / Mobil Sendiri',
+          override_vehicle_type: vehicleType || null,
+          is_billable: routeOverrides[routeId] ?? true,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'departure_date,route_id' });
 
       if (error) throw error;
-      toast.success(newStatus ? 'Set ke: Sewa Vendor (Invoice)' : 'Set ke: Driver Sendiri (Rp 0)');
+      toast.success('Tipe armada tagihan invoice berhasil diperbarui! 📄');
       fetchDateOverridesAndDrivers();
     } catch (err: any) {
+      toast.error(err.message || 'Gagal mengubah armada tagihan invoice');
+    }
+  };
+
+  const handleToggleUnitBillable = async (routeId: string, unitNumber: number = 1, currentIsBillable: boolean) => {
+    const newStatus = !currentIsBillable;
+    const unitKey = `${routeId}_${unitNumber}`;
+    const newBillableMap = { ...routeOverrides, [unitKey]: newStatus };
+    if (unitNumber === 1) newBillableMap[routeId] = newStatus;
+
+    // 1. Optimistic UI update
+    setRouteOverrides(newBillableMap);
+
+    try {
+      const isBill1 = newBillableMap[`${routeId}_1`] ?? newBillableMap[routeId] ?? true;
+      const isBill2 = newBillableMap[`${routeId}_2`] ?? true;
+      const isBill3 = newBillableMap[`${routeId}_3`] ?? true;
+
+      const payload: any = {
+        departure_date: selectedDate,
+        route_id: routeId,
+        is_billable: isBill1,
+        is_billable_unit2: isBill2,
+        is_billable_unit3: isBill3,
+        unit_sources: {
+          '1': isBill1,
+          '2': isBill2,
+          '3': isBill3,
+        },
+        assigned_driver_id: routeDrivers[`${routeId}_1`] || routeDrivers[routeId] || null,
+        assigned_driver_id_unit2: routeDrivers[`${routeId}_2`] || null,
+        assigned_driver_id_unit3: routeDrivers[`${routeId}_3`] || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert(payload, { onConflict: 'departure_date,route_id' });
+
+      if (error) {
+        const { error: fallbackErr } = await supabase
+          .from('invoice_daily_overrides')
+          .upsert({
+            departure_date: selectedDate,
+            route_id: routeId,
+            is_billable: isBill1,
+            note: isBill1 ? null : 'Driver / Mobil Sendiri',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'departure_date,route_id' });
+        if (fallbackErr) throw fallbackErr;
+      }
+
+      toast.success(newStatus ? `Unit ${unitNumber}: Sewa Vendor (Invoice)` : `Unit ${unitNumber}: Driver Sendiri (Rp 0)`);
+    } catch (err: any) {
       toast.error(err.message || 'Gagal mengubah status sumber armada');
+      fetchDateOverridesAndDrivers(); // Revert on failure
+    }
+  };
+
+  const handleToggleRouteBillable = async (routeId: string, currentIsBillable: boolean) => {
+    await handleToggleUnitBillable(routeId, 1, currentIsBillable);
+  };
+
+  const [isSplitting, setIsSplitting] = useState(false);
+
+  const handleSplitKarawangBaratNow = async (routeId: string) => {
+    setIsSplitting(true);
+    try {
+      const kbBookings = bookings.filter(
+        (b) => b.route_id === routeId && b.status === 'confirmed'
+      );
+
+      if (kbBookings.length === 0) {
+        toast.error('Tidak ada booking aktif di rute Karawang Barat untuk tanggal ini.');
+        return;
+      }
+
+      const unit1Keywords = ['tanjung pura', 'gempol'];
+      let updatedCount = 0;
+
+      for (const booking of kbBookings) {
+        const pickup = (booking.pickup_point || '').toLowerCase();
+        const targetUnit = unit1Keywords.some((k) => pickup.includes(k)) ? 1 : 2;
+
+        const { error: updErr } = await supabase
+          .from('bookings')
+          .update({ unit_number: targetUnit })
+          .eq('id', booking.id);
+        if (!updErr) updatedCount++;
+      }
+
+      toast.success(
+        `Berhasil split & susun ulang kursi ${updatedCount} penumpang Karawang Barat ke Unit 1 & Unit 2! 🚗✨`
+      );
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal membagi penumpang');
+    } finally {
+      setIsSplitting(false);
     }
   };
 
@@ -395,56 +587,166 @@ export default function AdminDashboard() {
 
                       {/* Source Vendor vs Internal Driver Selector */}
                       <div className="mt-2 flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-slate-600 font-medium">Supir / Driver:</span>
-                          <select
-                            value={routeDrivers[stat.route.id] || ''}
-                            onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value)}
-                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
-                          >
-                            <option value="">-- Pilih Supir Rute --</option>
-                            {availableDrivers.map((d) => {
-                              // Find if this driver is assigned to another route on selectedDate
-                              const assignedOtherRouteId = Object.entries(routeDrivers).find(
-                                ([rId, drvId]) => drvId === d.id && rId !== stat.route.id
-                              )?.[0];
+                        {/* If Multi-Unit Enabled (e.g. 2x Avanza / 3x Avanza), show a driver selector per unit */}
+                        {(stat.route.unit_count || 1) > 1 ? (
+                          <div className="flex flex-wrap items-center gap-2 w-full p-2 bg-slate-50 border border-slate-200 rounded-xl my-1">
+                            <span className="text-xs text-slate-700 font-bold w-full">👨‍✈️ Penugasan Supir per Unit Mobil:</span>
+                            {[...Array(stat.route.unit_count || 1)].map((_, uIdx) => {
+                              const uNum = uIdx + 1;
+                              const isKB = stat.route.route_name.toLowerCase().includes('karawang barat');
+                              const unitLabel = isKB
+                                ? uNum === 1
+                                  ? 'Unit 1 (Tanjung Pura)'
+                                  : uNum === 2
+                                    ? 'Unit 2 (Galuh Mas)'
+                                    : `Unit ${uNum}`
+                                : `Unit ${uNum}`;
 
-                              const assignedOtherRouteObj = routes?.find((r) => r.id === assignedOtherRouteId);
-                              const isAssignedElsewhere = !!assignedOtherRouteObj;
+                              const currentVal = routeDrivers[`${stat.route.id}_${uNum}`] || (uNum === 1 ? routeDrivers[stat.route.id] : '') || '';
 
                               return (
-                                <option
-                                  key={d.id}
-                                  value={d.id}
-                                  disabled={isAssignedElsewhere}
-                                >
-                                  👨‍✈️ {d.name} {d.phone ? `(${d.phone})` : ''}
-                                  {isAssignedElsewhere ? ` 🚫 [Bertugas di ${assignedOtherRouteObj?.route_name}]` : ''}
-                                </option>
+                                <div key={uNum} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                  <span className="text-[11px] text-slate-600 font-bold whitespace-nowrap">{unitLabel}:</span>
+                                  <select
+                                    value={currentVal}
+                                    onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value, uNum)}
+                                    className="px-2 py-0.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 font-semibold focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                                  >
+                                    <option value="">-- Pilih Supir --</option>
+                                    {availableDrivers.map((d) => {
+                                      // Check if this driver is assigned to another unit or route on selectedDate
+                                      const isAssignedElsewhere = Object.entries(routeDrivers).some(
+                                        ([key, drvId]) => drvId === d.id && key !== `${stat.route.id}_${uNum}` && !(uNum === 1 && key === stat.route.id)
+                                      );
+                                      const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
+                                      const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
+
+                                      return (
+                                        <option key={d.id} value={d.id} disabled={isAssignedElsewhere}>
+                                          👨‍✈️ {d.name} {typeTag} {d.phone ? `(${d.phone})` : ''} {isAssignedElsewhere ? '🚫 [Sudah Bertugas]' : ''}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
                               );
                             })}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-slate-600 font-medium">Supir / Driver:</span>
+                            <select
+                              value={routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id] || ''}
+                              onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value, 1)}
+                              className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
+                            >
+                              <option value="">-- Pilih Supir Rute --</option>
+                              {availableDrivers.map((d) => {
+                                const isAssignedElsewhere = Object.entries(routeDrivers).some(
+                                  ([key, drvId]) => drvId === d.id && key !== `${stat.route.id}_1` && key !== stat.route.id
+                                );
+                                const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
+                                const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
+
+                                return (
+                                  <option key={d.id} value={d.id} disabled={isAssignedElsewhere}>
+                                    👨‍✈️ {d.name} {typeTag} {d.phone ? `(${d.phone})` : ''} {isAssignedElsewhere ? '🚫 [Sudah Bertugas]' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Source Vendor vs Internal Driver Selector */}
+                        {(stat.route.unit_count || 1) > 1 ? (
+                          <div className="flex flex-wrap items-center gap-2 w-full p-2 bg-slate-50 border border-slate-200 rounded-xl my-1">
+                            <span className="text-xs text-slate-700 font-bold w-full">🏢 Sumber Armada per Unit Mobil:</span>
+                            {[...Array(stat.route.unit_count || 1)].map((_, uIdx) => {
+                              const uNum = uIdx + 1;
+                              const isKB = stat.route.route_name.toLowerCase().includes('karawang barat');
+                              const unitLabel = isKB
+                                ? uNum === 1
+                                  ? 'Unit 1 (Tanjung Pura)'
+                                  : uNum === 2
+                                    ? 'Unit 2 (Galuh Mas)'
+                                    : `Unit ${uNum}`
+                                : `Unit ${uNum}`;
+
+                              const isBillable = routeOverrides[`${stat.route.id}_${uNum}`] ?? (uNum === 1 ? routeOverrides[stat.route.id] : true) ?? true;
+
+                              return (
+                                <div key={uNum} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                  <span className="text-[11px] text-slate-600 font-bold whitespace-nowrap">{unitLabel}:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleUnitBillable(stat.route.id, uNum, isBillable)}
+                                    className={`px-2.5 py-0.5 text-xs rounded-md font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                      }`}
+                                  >
+                                    {isBillable ? '💳 Sewa Vendor (Invoice)' : '🏢 Driver Sendiri (Rp 0)'}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-slate-600 font-medium">Sumber Armada:</span>
+                            {(() => {
+                              const isBillable = routeOverrides[`${stat.route.id}_1`] ?? routeOverrides[stat.route.id] ?? true;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleRouteBillable(stat.route.id, isBillable)}
+                                  className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                      : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                    }`}
+                                >
+                                  {isBillable ? '💳 Sewa Vendor (Masuk Invoice)' : '🏢 Driver Sendiri / PT (Rp 0)'}
+                                </button>
+                              );
+                            })()}
+                          </div>
+                        )}
+
+                        {/* Invoice Billed Vehicle Selector */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-600 font-medium">Armada Invoice Vendor:</span>
+                          <select
+                            value={routeInvoiceVehicles[stat.route.id] || ''}
+                            onChange={(e) => handleSetRouteInvoiceVehicle(stat.route.id, e.target.value)}
+                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
+                          >
+                            <option value="">⚡ Otomatis ({stat.vehicleType})</option>
+                            <option value="Avanza">🚗 Avanza (Tagihan Avanza)</option>
+                            <option value="Elf Short">🚌 Elf Short (Tagihan Elf Short)</option>
+                            <option value="Elf Long">🚐 Elf Long (Tagihan Elf Long)</option>
                           </select>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-slate-600 font-medium">Sumber Armada:</span>
-                          {(() => {
-                            const isBillable = routeOverrides[stat.route.id] ?? true;
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleRouteBillable(stat.route.id, isBillable)}
-                                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer flex items-center gap-1 ${
-                                  isBillable
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
-                                }`}
-                              >
-                                {isBillable ? '💳 Sewa Vendor (Masuk Invoice)' : '🏢 Driver Sendiri / PT (Rp 0)'}
-                              </button>
-                            );
-                          })()}
-                        </div>
+                        {/* Special Split Zonasi Button for Karawang Barat when 2 Avanza or > 6 passengers */}
+                        {stat.route.route_name.toLowerCase().includes('karawang barat') && (
+                          <div className="w-full pt-1 flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSplitKarawangBaratNow(stat.route.id)}
+                              disabled={isSplitting}
+                              icon={<RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSplitting ? 'animate-spin' : ''}`} />}
+                              className="text-xs py-1 px-2.5 bg-blue-50/70 hover:bg-blue-100/70 border-blue-200 text-blue-800 font-bold"
+                              title="Otomatis bagi penumpang yang sudah booking ke Unit 1 (Tanjung Pura) & Unit 2 (Galuh Mas) sesuai halte"
+                            >
+                              {isSplitting ? 'Memproses...' : '⚡ Split Zonasi Penumpang (2 Avanza)'}
+                            </Button>
+                            <span className="text-[11px] text-slate-500">
+                              (Pisahkan {stat.confirmedCount} penumpang yang sudah pesan ke Unit 1 & Unit 2)
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -506,18 +808,25 @@ export default function AdminDashboard() {
                         (b) => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === uNum && b.status === 'confirmed'
                       ).length;
 
+                      const getUnitLabel = (u: number) => {
+                        const isKB = selectedRouteForMap?.route.route_name.toLowerCase().includes('karawang barat');
+                        if (isKB) {
+                          return u === 1 ? 'Tanjung Pura' : u === 2 ? 'Galuh Mas' : `Mobil Unit ${u}`;
+                        }
+                        return `Mobil Unit ${u}`;
+                      };
+
                       return (
                         <button
                           key={uNum}
                           type="button"
                           onClick={() => setAdminSelectedUnit(uNum)}
-                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
-                            isSel
+                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${isSel
                               ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
-                          Mobil Unit {uNum} ({unitBookingsCount} Penumpang)
+                          {getUnitLabel(uNum)} ({unitBookingsCount} Penumpang)
                         </button>
                       );
                     })}
@@ -525,17 +834,102 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <SeatMap
-                vehicleType={selectedRouteForMap.vehicleType}
-                bookings={bookings.filter(
-                  (b) => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === adminSelectedUnit
-                )}
-                selectedSeat={null}
-                onSeatSelect={() => {}}
-              />
+              {(() => {
+                const unitBookings = bookings.filter(
+                  (b) => b.route_id === selectedRouteForMap.route.id &&
+                    (b.unit_number || 1) === adminSelectedUnit &&
+                    b.status === 'confirmed'
+                );
+                // Re-index seat numbers for display (1,2,3...) to handle bookings
+                // that were made when route was Elf Short (seat numbers > 6)
+                const remappedBookings = unitBookings.map((b, idx) => ({
+                  ...b,
+                  seat_number: idx + 1,
+                }));
+                const displayVehicle = (selectedRouteForMap.route.unit_count || 1) > 1
+                  ? ((selectedRouteForMap.route.manual_vehicle_type as VehicleType) || 'Avanza')
+                  : selectedRouteForMap.vehicleType;
+                return (
+                  <SeatMap
+                    vehicleType={displayVehicle}
+                    bookings={remappedBookings}
+                    selectedSeat={null}
+                    onSeatSelect={() => { }}
+                  />
+                );
+              })()}
+              {/* Quick Passenger Reassign List in Modal for Multi-Unit */}
+              {(selectedRouteForMap.route.unit_count || 1) > 1 && (
+                <div className="mt-4 pt-3 border-t border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-800 mb-2 flex items-center justify-between">
+                    <span>👥 Pindahkan Penumpang antar Unit (Jika Over-capacity):</span>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      Unit 1: {bookings.filter(b => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === 1 && b.status === 'confirmed').length} org • 
+                      Unit 2: {bookings.filter(b => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === 2 && b.status === 'confirmed').length} org
+                    </span>
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                    {bookings
+                      .filter((b) => b.route_id === selectedRouteForMap.route.id && b.status === 'confirmed')
+                      .map((b) => {
+                        const empName = (b as any).employee?.name || 'Penumpang';
+                        const pickup = b.pickup_point || '-';
+                        const currentUnit = b.unit_number || 1;
+
+                        return (
+                          <div
+                            key={b.id}
+                            className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                          >
+                            <div className="truncate mr-2">
+                              <span className="font-bold text-slate-900">{empName}</span>
+                              <span className="text-[11px] text-slate-500 ml-1.5 truncate">
+                                (📍 {pickup})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-[10px] text-slate-500 font-medium">Unit:</span>
+                              <select
+                                value={currentUnit}
+                                onChange={async (e) => {
+                                  const targetUnit = parseInt(e.target.value, 10);
+                                  try {
+                                    const { error } = await supabase
+                                      .from('bookings')
+                                      .update({ unit_number: targetUnit })
+                                      .eq('id', b.id);
+                                    if (error) throw error;
+                                    toast.success(`${empName} dipindahkan ke Unit ${targetUnit}! 🚗`);
+                                    refetch();
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Gagal memindahkan unit');
+                                  }
+                                }}
+                                className="px-2 py-0.5 text-xs font-bold bg-white border border-slate-300 rounded-md text-blue-700 cursor-pointer shadow-2xs"
+                              >
+                                {[...Array(selectedRouteForMap.route.unit_count || 1)].map((_, idx) => {
+                                  const u = idx + 1;
+                                  const isKB = selectedRouteForMap.route.route_name.toLowerCase().includes('karawang barat');
+                                  const label = isKB
+                                    ? u === 1 ? 'Unit 1 (Tanjung Pura)' : u === 2 ? 'Unit 2 (Galuh Mas)' : `Unit ${u}`
+                                    : `Unit ${u}`;
+                                  return (
+                                    <option key={u} value={u}>
+                                      {label}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </>
           )}
-          <p className="text-center text-xs text-slate-500">
+          <p className="text-center text-xs text-slate-500 mt-2">
             Hover / Tap pada nomor kursi merah untuk melihat nama penumpang.
           </p>
         </div>

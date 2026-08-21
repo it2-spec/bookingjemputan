@@ -1,6 +1,4 @@
-// ============================================================
-// SuperAdmin — Rekap Invoice Armada (with Exclude / Internal Driver support)
-// ============================================================
+import { getVehicleType } from '../../lib/vehicleLogic';
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -44,7 +42,7 @@ interface InvoiceDailyOverride {
 interface RouteRecap {
   routeId: string;
   routeName: string;
-  vehicleType: VehicleType;
+  vehicleType: VehicleType | string;
   passengerCount: number;
   price: number;
   subtotal: number;
@@ -138,20 +136,12 @@ export default function SuperAdminInvoice() {
     fetchOverrides();
   }, []);
 
-  const getPriceForRoute = (routeId: string, vehicleType: VehicleType): number => {
+  const getPriceForRoute = (routeId: string, vehicleType: VehicleType | string): number => {
+    const targetType = vehicleType.includes('Avanza') ? 'Avanza' : vehicleType.includes('Elf Short') ? 'Elf Short' : vehicleType.includes('Elf Long') ? 'Elf Long' : vehicleType;
     const found = prices.find(
-      (p) => p.route_id === routeId && p.vehicle_type === vehicleType
+      (p) => p.route_id === routeId && p.vehicle_type === targetType
     );
     return found?.price_per_day ?? 0;
-  };
-
-  const getModeVehicleType = (vehicleTypes: string[]): VehicleType => {
-    const counts: Record<string, number> = {};
-    vehicleTypes.forEach((v) => {
-      counts[v] = (counts[v] || 0) + 1;
-    });
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    return sorted[0][0] as VehicleType;
   };
 
   // Main Calculation Logic
@@ -236,28 +226,51 @@ export default function SuperAdminInvoice() {
                 (o) => o.departure_date === date && o.route_id === routeId
               );
 
-              const isBillable = matchedOverride ? matchedOverride.is_billable : true;
+              // Check if there are multi-unit overrides (e.g. 1 unit vendor, 1 unit internal)
+              const unitSources = (matchedOverride as any)?.unit_sources;
+              const hasUnitSources = unitSources && typeof unitSources === 'object';
+              const isUnit1Billable = hasUnitSources ? Boolean(unitSources['1']) : (matchedOverride ? matchedOverride.is_billable : true);
+              const isUnit2Billable = hasUnitSources ? Boolean(unitSources['2']) : ((matchedOverride as any)?.is_billable_unit2 ?? true);
+
+              const isBillable = matchedOverride ? (matchedOverride.is_billable || isUnit1Billable || isUnit2Billable) : true;
               const vehicleType =
-                matchedOverride?.override_vehicle_type || getModeVehicleType(info.vehicleTypes);
+                matchedOverride?.override_vehicle_type || getVehicleType(info.count);
 
               let price = 0;
               if (isBillable) {
-                price =
-                  matchedOverride?.custom_price ??
-                  (activePrices.find(
-                    (p) => p.route_id === routeId && p.vehicle_type === vehicleType
-                  )?.price_per_day ?? 0);
+                // If 1 is vendor and 1 is internal for a 2-unit split, invoice price is 1x Avanza instead of Elf Short
+                if (hasUnitSources && (isUnit1Billable !== isUnit2Billable)) {
+                  const avanzaPrice = activePrices.find(
+                    (p) => p.route_id === routeId && p.vehicle_type === 'Avanza'
+                  )?.price_per_day ?? 0;
+                  price = matchedOverride?.custom_price ?? avanzaPrice;
+                } else if (!isUnit1Billable && !isUnit2Billable) {
+                  price = 0;
+                } else {
+                  price =
+                    matchedOverride?.custom_price ??
+                    (activePrices.find(
+                      (p) => p.route_id === routeId && p.vehicle_type === vehicleType
+                    )?.price_per_day ?? 0);
+                }
+              }
+
+              let note = matchedOverride?.note || undefined;
+              if (hasUnitSources && isUnit1Billable !== isUnit2Billable) {
+                note = isUnit1Billable 
+                  ? 'Unit 1: Vendor (Avanza) | Unit 2: Internal PT (Rp 0)' 
+                  : 'Unit 1: Internal PT (Rp 0) | Unit 2: Vendor (Avanza)';
               }
 
               return {
                 routeId,
                 routeName: info.routeName,
-                vehicleType,
+                vehicleType: hasUnitSources && isUnit1Billable !== isUnit2Billable ? 'Avanza (1 Unit Vendor)' : vehicleType,
                 passengerCount: info.count,
                 price,
                 subtotal: price, // Rp 0 if not billable
-                isBillable,
-                note: matchedOverride?.note || undefined,
+                isBillable: price > 0,
+                note,
               };
             }
           );
@@ -686,9 +699,8 @@ export default function SuperAdminInvoice() {
                             {day.routes.map((route, routeIdx) => (
                               <tr
                                 key={`${day.date}-${route.routeId}`}
-                                className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${
-                                  !route.isBillable ? 'bg-slate-50/80' : dayIdx % 2 === 0 ? '' : 'bg-slate-50/30'
-                                }`}
+                                className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${!route.isBillable ? 'bg-slate-50/80' : dayIdx % 2 === 0 ? '' : 'bg-slate-50/30'
+                                  }`}
                               >
                                 <td className="px-5 py-3">
                                   {routeIdx === 0 ? (
@@ -711,9 +723,8 @@ export default function SuperAdminInvoice() {
 
                                 <td className="px-4 py-3">
                                   <span
-                                    className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold ${
-                                      VEHICLE_COLORS[route.vehicleType]
-                                    }`}
+                                    className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold ${VEHICLE_COLORS[route.vehicleType as VehicleType] || 'bg-blue-100 text-blue-800'
+                                      }`}
                                   >
                                     {route.vehicleType}
                                   </span>
@@ -735,11 +746,10 @@ export default function SuperAdminInvoice() {
                                       handleToggleBillable(day.date, route.routeId, route.isBillable)
                                     }
                                     title="Klik untuk mengubah status invoice"
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                                      route.isBillable
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${route.isBillable
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                         : 'bg-slate-200 text-slate-600 border-slate-300 hover:bg-slate-300'
-                                    }`}
+                                      }`}
                                   >
                                     {route.isBillable ? (
                                       <>

@@ -20,24 +20,29 @@ interface VehicleInfo {
 export function useVehicleType(
   bookings: Booking[],
   isLocked: boolean = false,
-  lockedVehicle: VehicleType | null = null
+  lockedVehicle: VehicleType | null = null,
+  manualVehicleType?: string | null
 ): VehicleInfo {
   return useMemo(() => {
     const confirmedCount = bookings.filter((b) => b.status === 'confirmed').length;
 
-    // Vehicle rules:
+    // Base vehicle type based on actual confirmed bookings
     // 1–6 passengers   => Avanza (6 seats)
-    // 7–12 passengers  => Elf Short (12 seats)
-    // 13–16 passengers => Elf Long (16 seats)
-    const calculatedType = getVehicleType(confirmedCount);
+    // 7–14 passengers  => Elf Short (14 seats)
+    // 15–16 passengers => Elf Long (16 seats)
+    const calculatedType = getVehicleType(confirmedCount, manualVehicleType);
     const vehicleType = resolveVehicleType(lockedVehicle, calculatedType, isLocked);
 
-    // If current vehicle capacity is reached (e.g., 6 on Avanza, or 14 on Elf Short),
-    // preview the next upgraded vehicle layout (Elf Short / Elf Long) so prospective passenger can select the new seat!
+    // If current vehicle capacity is reached (6 on Avanza, or 14 on Elf Short),
+    // preview the next upgraded vehicle layout (Elf Short / Elf Long) in the booking seat map
+    // so prospective passenger can select seat #7 or #15.
+    // If they cancel/don't book, confirmedCount remains 6/14 and official status stays Avanza/Elf Short!
     let displayVehicleType = vehicleType;
-    if (confirmedCount === 6 && !isLocked) {
+    const isAuto = !manualVehicleType || manualVehicleType === 'Auto' || manualVehicleType === '';
+
+    if (confirmedCount === 6 && isAuto && !isLocked) {
       displayVehicleType = 'Elf Short';
-    } else if (confirmedCount === 14 && !isLocked) {
+    } else if (confirmedCount === 14 && isAuto && !isLocked) {
       displayVehicleType = 'Elf Long';
     }
 
@@ -49,7 +54,7 @@ export function useVehicleType(
       confirmedCount,
       maxSeats: displayMaxSeats,
       remainingSeats: Math.max(0, remainingSeats),
-      isFull: confirmedCount >= 18,
+      isFull: confirmedCount >= 16,
     };
-  }, [bookings, isLocked, lockedVehicle]);
+  }, [bookings, isLocked, lockedVehicle, manualVehicleType]);
 }

@@ -8,9 +8,7 @@ import { Navigation, MapPin, Radio, CheckCircle, Users, RefreshCw, AlertCircle }
 import toast from 'react-hot-toast';
 
 // Coordinates for standard shuttle stops in Karawang area
-const STATIONS: Record<string, [number, number]> = {
-  'Karawang Barat 1': [-6.276592879810661, 107.27324066001847],
-  'Karawang Barat 2': [-6.276592879810661, 107.27324066001847],
+const DEFAULT_STATIONS: Record<string, [number, number]> = {
   'Karawang Barat': [-6.276592879810661, 107.27324066001847],
   'Karawang Timur': [-6.2830973278683935, 107.45715106568662],
   'Cikampek': [-6.370380867733877, 107.37704813870378],
@@ -57,14 +55,14 @@ export function DriverDashboard() {
       let targetRouteId = '';
 
       if (overrideList && overrideList.length > 0) {
-        // Match today's assignment first, or latest assignment
+        // Match today's assignment
         const todayOverride = overrideList.find((o) => o.departure_date === todayStr);
-        const activeOverride = todayOverride || overrideList[0];
-        targetRouteId = activeOverride.route_id;
-        setIsRouteLocked(true);
-      } else if (employee.assigned_route_id) {
-        targetRouteId = employee.assigned_route_id;
-        setIsRouteLocked(true);
+        if (todayOverride) {
+          targetRouteId = todayOverride.route_id;
+          setIsRouteLocked(true);
+        } else {
+          setIsRouteLocked(false);
+        }
       } else {
         setIsRouteLocked(false);
       }
@@ -154,7 +152,7 @@ export function DriverDashboard() {
   };
 
   const handleSelectPresetStation = (stationName: string) => {
-    const coords = STATIONS[stationName];
+    const coords = DEFAULT_STATIONS[stationName];
     if (coords) {
       setCurrentCoords(coords);
       syncLocationToDb(coords[0], coords[1]);
@@ -177,7 +175,7 @@ export function DriverDashboard() {
       type: 'driver',
       status: 'Live Realtime',
     },
-    ...Object.entries(STATIONS).map(([name, coords]) => ({
+    ...Object.entries(DEFAULT_STATIONS).map(([name, coords]: [string, [number, number]]) => ({
       id: `station-${name}`,
       title: `Poin ${name}`,
       subtitle: 'Halte Jemputan',
@@ -295,7 +293,7 @@ export function DriverDashboard() {
           <div className="pt-2">
             <span className="text-[11px] text-slate-600 block mb-1 font-medium">Pilih Poin Lokasi Cepat:</span>
             <div className="flex flex-wrap gap-2">
-              {Object.keys(STATIONS).map((stName) => (
+              {Object.keys(DEFAULT_STATIONS).map((stName) => (
                 <button
                   key={stName}
                   onClick={() => handleSelectPresetStation(stName)}

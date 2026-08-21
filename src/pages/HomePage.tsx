@@ -80,19 +80,37 @@ export default function HomePage() {
 
     const fetchAssignedDriver = async () => {
       try {
-        // 1. Check if Admin explicitly assigned a driver for this specific date & route
+        // 1. Check if Admin explicitly assigned a driver for this specific date & route (and specific unit)
         const { data: overrideData } = await supabase
           .from('invoice_daily_overrides')
-          .select('assigned_driver_id')
+          .select('assigned_driver_id, assigned_driver_id_unit2, assigned_driver_id_unit3, driver_assignments')
           .eq('departure_date', activeBooking.departure_date)
           .eq('route_id', activeBooking.route_id)
           .maybeSingle();
 
-        if (overrideData?.assigned_driver_id) {
+        const unitNum = activeBooking.unit_number || 1;
+        let driverId: string | null = null;
+
+        if (overrideData) {
+          if (overrideData.driver_assignments && typeof overrideData.driver_assignments === 'object') {
+            driverId = overrideData.driver_assignments[String(unitNum)] || overrideData.driver_assignments['1'];
+          }
+          if (!driverId) {
+            if (unitNum === 2 && overrideData.assigned_driver_id_unit2) {
+              driverId = overrideData.assigned_driver_id_unit2;
+            } else if (unitNum === 3 && overrideData.assigned_driver_id_unit3) {
+              driverId = overrideData.assigned_driver_id_unit3;
+            } else {
+              driverId = overrideData.assigned_driver_id;
+            }
+          }
+        }
+
+        if (driverId) {
           const { data: driverEmp } = await supabase
             .from('employees')
             .select('name, phone, nik')
-            .eq('id', overrideData.assigned_driver_id)
+            .eq('id', driverId)
             .maybeSingle();
 
           if (driverEmp) {
@@ -101,21 +119,7 @@ export default function HomePage() {
           }
         }
 
-        // 2. Check if driver has a permanent default route assigned in employees table
-        const { data: defaultRouteDriver } = await supabase
-          .from('employees')
-          .select('name, phone, nik')
-          .eq('role', 'driver')
-          .eq('assigned_route_id', activeBooking.route_id)
-          .limit(1)
-          .maybeSingle();
-
-        if (defaultRouteDriver) {
-          setRouteDriver(defaultRouteDriver);
-          return;
-        }
-
-        // No driver assigned yet for this route & date
+        // No driver explicitly assigned by admin for this route & date yet
         setRouteDriver(null);
       } catch (e) {
         console.error('Error fetching driver info:', e);
@@ -465,8 +469,7 @@ export default function HomePage() {
                         navigate(`/booking?route=${route.id}`);
                       } else {
                         toast.error(
-                          `Anda terdaftar untuk rute ${
-                            employee?.assigned_route_name || 'Karawang Barat'
+                          `Anda terdaftar untuk rute ${employee?.assigned_route_name || 'Karawang Barat'
                           }. Silakan ubah rute di Profil jika ingin pindah.`,
                           { duration: 4000 }
                         );
@@ -561,7 +564,7 @@ export default function HomePage() {
               vehicleType={getVehicleType(activeRouteBookings.filter(b => b.status === 'confirmed').length)}
               bookings={activeRouteBookings}
               selectedSeat={activeBooking.seat_number}
-              onSeatSelect={() => {}}
+              onSeatSelect={() => { }}
             />
           )}
           <p className="text-center text-xs text-surface-400">

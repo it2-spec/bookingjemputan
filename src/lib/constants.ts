@@ -36,8 +36,7 @@ export const VEHICLE_SEAT_CAPACITY: Record<VehicleType, number> = {
 
 /** Available routes */
 export const ROUTE_NAMES = [
-  'Karawang Barat 1 (Tanjung Pura, Kertabumi)',
-  'Karawang Barat 2 (Dewi Sri, Tuparev, Galuh Mas)',
+  'Karawang Barat',
   'Karawang Timur',
   'Cikampek',
 ] as const;

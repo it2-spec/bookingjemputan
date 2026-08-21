@@ -47,6 +47,7 @@ export default function AdminPassengerList() {
   const [newDepartment, setNewDepartment] = useState('Executive');
   const [newPhone, setNewPhone] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('superadmin');
+  const [newDriverType, setNewDriverType] = useState<'internal' | 'vendor'>('vendor');
   const [savingUser, setSavingUser] = useState(false);
 
   const { data: routes } = useRoutes();
@@ -117,13 +118,18 @@ export default function AdminPassengerList() {
     }
     setSavingUser(true);
     try {
-      const { error } = await supabase.from('employees').insert({
+      const payload: any = {
         nik: newNik.trim(),
         name: newName.trim(),
         department: newDepartment.trim(),
         phone: newPhone.trim() || null,
         role: newRole,
-      });
+      };
+      if (newRole === 'driver') {
+        payload.driver_type = newDriverType;
+      }
+
+      const { error } = await supabase.from('employees').insert(payload);
 
       if (error) throw error;
 
@@ -268,11 +274,63 @@ export default function AdminPassengerList() {
                         <p className="text-xs text-slate-500 mt-0.5">
                           NIK: <span className="font-mono text-slate-700">{emp?.nik}</span> • {emp?.department}
                         </p>
-                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-primary-500" />
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1.5">
+                          <span className="flex items-center gap-1 font-semibold text-slate-700">
+                            <MapPin className="w-3.5 h-3.5 text-primary-500" />
                             {rte?.route_name}
                           </span>
+                          {booking.pickup_point && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium flex items-center gap-1">
+                              📍 Halte: {booking.pickup_point}
+                            </span>
+                          )}
+                          {/* Unit Selector / Badge */}
+                          {rte?.unit_count && rte.unit_count > 1 ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] text-slate-500 font-medium">Pindah Unit:</span>
+                              <select
+                                value={booking.unit_number || 1}
+                                onChange={async (e) => {
+                                  const newUnit = parseInt(e.target.value, 10);
+                                  try {
+                                    const { error } = await supabase
+                                      .from('bookings')
+                                      .update({ unit_number: newUnit })
+                                      .eq('id', booking.id);
+                                    if (error) throw error;
+                                    toast.success(`${emp?.name || 'Penumpang'} dipindahkan ke Unit ${newUnit}! 🚗`);
+                                    refetch();
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Gagal memindahkan unit penumpang');
+                                  }
+                                }}
+                                className="px-2 py-0.5 text-xs font-bold bg-blue-50 border border-blue-300 text-blue-800 rounded-md focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                              >
+                                {[...Array(rte.unit_count || 1)].map((_, uIdx) => {
+                                  const uNum = uIdx + 1;
+                                  const isKB = rte.route_name.toLowerCase().includes('karawang barat');
+                                  const label = isKB
+                                    ? uNum === 1
+                                      ? '🚗 Unit 1 (Tanjung Pura)'
+                                      : uNum === 2
+                                        ? '🚗 Unit 2 (Galuh Mas)'
+                                        : `🚗 Unit ${uNum}`
+                                    : `🚗 Unit ${uNum}`;
+                                  return (
+                                    <option key={uNum} value={uNum}>
+                                      {label}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                          ) : (
+                            booking.unit_number && booking.unit_number > 1 && (
+                              <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
+                                🚗 Unit {booking.unit_number} {rte?.route_name.toLowerCase().includes('karawang barat') ? (booking.unit_number === 2 ? '(Galuh Mas)' : '(Tanjung Pura)') : ''}
+                              </span>
+                            )
+                          )}
                           <span className="flex items-center gap-1">
                             <Bus className="w-3 h-3 text-sky-500" />
                             {booking.vehicle_type}
@@ -413,6 +471,25 @@ export default function AdminPassengerList() {
               <option value="employee">👤 Karyawan / Penumpang</option>
             </select>
           </div>
+
+          {newRole === 'driver' && (
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+              <label className="text-xs font-bold text-blue-900 block">
+                🏢 Kategori / Tipe Driver <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={newDriverType}
+                onChange={(e) => setNewDriverType(e.target.value as 'internal' | 'vendor')}
+                className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-bold text-blue-950"
+              >
+                <option value="vendor">💳 Driver Sewa Vendor (Masuk Tagihan Invoice)</option>
+                <option value="internal">🏢 Driver Internal PT (Armada / Supir Sendiri - Rp 0)</option>
+              </select>
+              <p className="text-[11px] text-blue-700">
+                Otomatis menentukan status tagihan invoice saat ditugaskan ke rute.
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <Button

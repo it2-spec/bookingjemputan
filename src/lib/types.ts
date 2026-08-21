@@ -23,6 +23,7 @@ export interface Employee {
   assigned_route_name?: string | null;
   default_pickup_point?: string | null;
   route_change_status?: 'pending' | 'none';
+  driver_type?: 'internal' | 'vendor' | null;
   created_at: string;
 }
 

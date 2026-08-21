@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { LiveMap, type MarkerLocation } from '../../components/maps/LiveMap';
 import type { DriverLocation } from '../../lib/types';
+import { getTodayDate } from '../../lib/vehicleLogic';
 import {
   Users,
   Bus,
@@ -17,8 +18,6 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
 const DEFAULT_STATIONS: Record<string, [number, number]> = {
-  'Karawang Barat 1': [-6.276592879810661, 107.27324066001847],
-  'Karawang Barat 2': [-6.276592879810661, 107.27324066001847],
   'Karawang Barat': [-6.276592879810661, 107.27324066001847],
   'Karawang Timur': [-6.2830973278683935, 107.45715106568662],
   'Cikampek': [-6.370380867733877, 107.37704813870378],
@@ -39,7 +38,22 @@ export default function SuperAdminDashboard() {
       const { data: dData } = await supabase
         .from('driver_locations')
         .select('*, driver:employees(name, nik)');
-      if (dData) setDrivers(dData as any[]);
+
+      if (dData) {
+        const todayStr = getTodayDate();
+        const todayDrivers = dData.filter((d: any) => {
+          if (!d.updated_at) return false;
+          const updateTime = new Date(d.updated_at);
+          const utc = updateTime.getTime() + updateTime.getTimezoneOffset() * 60000;
+          const wibDate = new Date(utc + 7 * 3600000);
+          const year = wibDate.getFullYear();
+          const month = String(wibDate.getMonth() + 1).padStart(2, '0');
+          const day = String(wibDate.getDate()).padStart(2, '0');
+          const updatedDateStr = `${year}-${month}-${day}`;
+          return updatedDateStr === todayStr;
+        });
+        setDrivers(todayDrivers as any[]);
+      }
 
       // 3. Pending approvals
       let { data: appData, error: appErr } = await supabase

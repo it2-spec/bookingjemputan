@@ -89,6 +89,27 @@ export default function BookingPage() {
     }
   }, [routeSchedule, selectedPickupPoint, employee?.default_pickup_point, employee?.id]);
 
+  // Helper: Determine unit number (1 or 2) based on selected pickup point
+  const getUnitFromPickupPoint = (pickupPoint: string): number => {
+    if (!selectedRoute?.route_name.toLowerCase().includes('karawang barat')) return 1;
+    // Unit 1 (Tanjung Pura zone): Alfamart Tanjung Pura, Gempol, Kertabumi
+    const unit1Stops = ['Alfamart Tanjung Pura', 'Gempol', 'Kertabumi'];
+    if (unit1Stops.some(s => pickupPoint.toLowerCase().includes(s.toLowerCase()))) {
+      return 1;
+    }
+    // Unit 2 (Galuh Mas zone): RS. Dewi Sri, Mercure, Galuh Mas, Pindayungan, Cidomba, Surcip
+    return 2;
+  };
+
+  // Automatically sync unit selection when pickup point changes (if multi-unit active)
+  useEffect(() => {
+    if (selectedRoute?.unit_count && selectedRoute.unit_count > 1 && selectedPickupPoint) {
+      const autoUnit = getUnitFromPickupPoint(selectedPickupPoint);
+      setSelectedUnitNumber(autoUnit);
+      setSelectedSeat(null);
+    }
+  }, [selectedPickupPoint, selectedRoute?.unit_count]);
+
   const { data: bookings = [], isLoading: bookingsLoading } = useRouteBookings(
     selectedRouteId,
     tomorrowDate
@@ -102,7 +123,7 @@ export default function BookingPage() {
   // Real-time updates for selected route
   useRealtimeBookings(selectedRouteId, tomorrowDate);
 
-  const vehicleInfo = useVehicleType(bookings);
+  const vehicleInfo = useVehicleType(bookings, false, null, selectedRoute?.manual_vehicle_type);
 
   const [selectedUnitNumber, setSelectedUnitNumber] = useState<number>(1);
 
@@ -238,14 +259,14 @@ export default function BookingPage() {
             {routesLoading
               ? [...Array(3)].map((_, i) => <RouteCardSkeleton key={i} />)
               : routes?.map((route, index) => (
-                  <RouteCard
-                    key={route.id}
-                    routeName={route.route_name}
-                    departureTime={DEPARTURE_TIME}
-                    onClick={() => setSelectedRouteId(route.id)}
-                    delay={index * 0.1}
-                  />
-                ))}
+                <RouteCard
+                  key={route.id}
+                  routeName={route.route_name}
+                  departureTime={DEPARTURE_TIME}
+                  onClick={() => setSelectedRouteId(route.id)}
+                  delay={index * 0.1}
+                />
+              ))}
           </div>
         </AnimatePresence>
       )}
@@ -287,11 +308,34 @@ export default function BookingPage() {
                   onChange={(e) => setSelectedPickupPoint(e.target.value)}
                   className="w-full px-3 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold text-slate-900 cursor-pointer"
                 >
-                  {routeSchedule.stops.map((stop) => (
-                    <option key={stop.name} value={stop.name}>
-                      📍 {stop.name} (Jam Est. {stop.time} WIB)
-                    </option>
-                  ))}
+                  {selectedRoute?.route_name.toLowerCase().includes('karawang barat') ? (
+                    <>
+                      <optgroup label="🚗 ZONA TANJUNG PURA (Unit 1)">
+                        {routeSchedule.stops
+                          .filter(s => ['Alfamart Tanjung Pura', 'Gempol'].some(k => s.name.includes(k)))
+                          .map(stop => (
+                            <option key={stop.name} value={stop.name}>
+                              📍 {stop.name} (Est. {stop.time} WIB)
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="🚗 ZONA GALUH MAS (Unit 2)">
+                        {routeSchedule.stops
+                          .filter(s => !['Alfamart Tanjung Pura', 'Gempol'].some(k => s.name.includes(k)))
+                          .map(stop => (
+                            <option key={stop.name} value={stop.name}>
+                              📍 {stop.name} (Est. {stop.time} WIB)
+                            </option>
+                          ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    routeSchedule.stops.map((stop) => (
+                      <option key={stop.name} value={stop.name}>
+                        📍 {stop.name} (Jam Est. {stop.time} WIB)
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
             )}
@@ -309,8 +353,8 @@ export default function BookingPage() {
               />
             )}
 
-            {/* Unit Selector Tab (If Multi-Unit Enabled by Admin) */}
-            {selectedRoute?.unit_count && selectedRoute.unit_count > 1 && (
+            {/* Unit Selector Tab (Only shown if total bookings > 6 and Admin sets multi-unit) */}
+            {selectedRoute?.unit_count && selectedRoute.unit_count > 1 && bookings.filter(b => b.status === 'confirmed').length > 6 && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl space-y-2">
                 <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
                   🚗 Pilih Unit Armada Rute {selectedRoute.route_name}:
@@ -321,6 +365,15 @@ export default function BookingPage() {
                     const isSelected = selectedUnitNumber === uNum;
                     const uBookingsCount = bookings.filter((b) => (b.unit_number || 1) === uNum && b.status === 'confirmed').length;
 
+                    const isKB = selectedRoute.route_name.toLowerCase().includes('karawang barat');
+                    const unitTitle = isKB
+                      ? uNum === 1
+                        ? 'Tanjung Pura'
+                        : uNum === 2
+                        ? 'Galuh Mas'
+                        : `Mobil Unit ${uNum}`
+                      : `Mobil Unit ${uNum}`;
+
                     return (
                       <button
                         key={uNum}
@@ -329,13 +382,12 @@ export default function BookingPage() {
                           setSelectedUnitNumber(uNum);
                           setSelectedSeat(null);
                         }}
-                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
-                          isSelected
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${isSelected
                             ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                             : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
-                        }`}
+                          }`}
                       >
-                        <div>Mobil Unit {uNum}</div>
+                        <div className="font-bold text-xs">{unitTitle}</div>
                         <div className={`text-[10px] font-normal mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
                           Terisi {uBookingsCount} Kursi
                         </div>
@@ -357,7 +409,7 @@ export default function BookingPage() {
               </div>
             ) : (
               <SeatMap
-                vehicleType={getVehicleType(bookings.length, selectedRoute?.manual_vehicle_type)}
+                vehicleType={vehicleInfo.vehicleType}
                 bookings={bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber)}
                 selectedSeat={selectedSeat}
                 onSeatSelect={handleSeatSelect}

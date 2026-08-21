@@ -40,6 +40,7 @@ export default function SuperAdminPassengers() {
   const [department, setDepartment] = useState('Executive');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('employee');
+  const [driverType, setDriverType] = useState<'internal' | 'vendor'>('vendor');
   const [assignedRouteId, setAssignedRouteId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -58,6 +59,7 @@ export default function SuperAdminPassengers() {
         Departemen: 'Production',
         No_HP: '08123456789',
         Role: 'employee',
+        Tipe_Driver: '',
         Nama_Rute: 'Karawang Barat',
       },
       {
@@ -66,15 +68,26 @@ export default function SuperAdminPassengers() {
         Departemen: 'Quality Control',
         No_HP: '08567890123',
         Role: 'employee',
+        Tipe_Driver: '',
         Nama_Rute: 'Karawang Timur',
       },
       {
         NIK: '2001',
-        Nama: 'Pak Bambang',
-        Departemen: 'Logistics',
+        Nama: 'Pak Mamat',
+        Departemen: 'Internal PT',
         No_HP: '08199988877',
         Role: 'driver',
-        Nama_Rute: 'Cikampek',
+        Tipe_Driver: 'internal',
+        Nama_Rute: 'Karawang Barat',
+      },
+      {
+        NIK: '2002',
+        Nama: 'Pak Caing',
+        Departemen: 'Vendor Transport',
+        No_HP: '08199988888',
+        Role: 'driver',
+        Tipe_Driver: 'vendor',
+        Nama_Rute: 'Karawang Barat',
       },
     ];
 
@@ -100,63 +113,70 @@ export default function SuperAdminPassengers() {
         const data: any[] = XLSX.utils.sheet_to_json(ws);
 
         if (!data || data.length === 0) {
-          toast.error('File Excel kosong atau format tidak sesuai.');
+          toast.error('File Excel kosong atau format tidak sesuai!');
           setImporting(false);
           return;
         }
 
-        const validRoles: UserRole[] = ['employee', 'driver', 'admin', 'superadmin'];
-        const recordsToInsert: any[] = [];
-        let skippedCount = 0;
+        const validEmployees: any[] = [];
 
         for (const row of data) {
-          const nikVal = String(row.NIK || row.nik || '').trim();
-          const nameVal = String(row.Nama || row.nama || row.name || '').trim();
-          if (!nikVal || !nameVal) {
-            skippedCount++;
-            continue;
+          const rowNik = String(row.NIK || row.nik || '').trim();
+          const rowName = String(row.Nama || row.nama || row.Name || row.name || '').trim();
+          const rowDept = String(row.Departemen || row.departemen || row.Department || 'General').trim();
+          const rowPhone = String(row.No_HP || row.no_hp || row.Phone || row.phone || '').trim();
+          const rawRole = String(row.Role || row.role || 'employee').toLowerCase().trim();
+          const rawDriverType = String(row.Tipe_Driver || row.tipe_driver || row.driver_type || '').toLowerCase().trim();
+          const rowRouteName = String(row.Nama_Rute || row.nama_rute || row.Route || '').trim();
+
+          if (!rowNik || !rowName) continue;
+
+          let finalRole: UserRole = 'employee';
+          if (['superadmin', 'admin', 'driver', 'employee'].includes(rawRole)) {
+            finalRole = rawRole as UserRole;
           }
 
-          let roleVal: UserRole = 'employee';
-          const rInput = String(row.Role || row.role || '').toLowerCase().trim();
-          if (validRoles.includes(rInput as UserRole)) {
-            roleVal = rInput as UserRole;
+          let matchedRouteId = null;
+          if (rowRouteName) {
+            const found = routes.find(r => r.route_name.toLowerCase().includes(rowRouteName.toLowerCase()));
+            if (found) matchedRouteId = found.id;
           }
 
-          const rNameInput = String(row.Nama_Rute || row.nama_rute || row.route || '').toLowerCase().trim();
-          let routeId: string | null = null;
-          if (rNameInput) {
-            const matchedRoute = routes.find((r) => r.route_name.toLowerCase().includes(rNameInput));
-            if (matchedRoute) routeId = matchedRoute.id;
+          const empPayload: any = {
+            nik: rowNik,
+            name: rowName,
+            department: rowDept,
+            phone: rowPhone || null,
+            role: finalRole,
+            assigned_route_id: matchedRouteId,
+          };
+
+          if (finalRole === 'driver') {
+            empPayload.driver_type = rawDriverType === 'internal' ? 'internal' : 'vendor';
           }
 
-          recordsToInsert.push({
-            nik: nikVal,
-            name: nameVal,
-            department: String(row.Departemen || row.departemen || row.department || 'General').trim(),
-            phone: String(row.No_HP || row.phone || row.hp || '').trim() || null,
-            role: roleVal,
-            assigned_route_id: routeId,
-          });
+          validEmployees.push(empPayload);
         }
 
-        if (recordsToInsert.length === 0) {
-          toast.error('Tidak ada data valid yang dapat di-import.');
+        if (validEmployees.length === 0) {
+          toast.error('Tidak ada baris data valid yang bisa diimport.');
           setImporting(false);
           return;
         }
 
-        const { error } = await supabase.from('employees').upsert(recordsToInsert, { onConflict: 'nik' });
+        const { error } = await supabase
+          .from('employees')
+          .upsert(validEmployees, { onConflict: 'nik' });
+
         if (error) throw error;
 
-        toast.success(`Berhasil meng-import ${recordsToInsert.length} user! ${skippedCount > 0 ? `(${skippedCount} dibuang)` : ''}`);
+        toast.success(`Berhasil mengimport/update ${validEmployees.length} user! 🎉`);
         setShowImportModal(false);
         fetchEmployeesAndRoutes();
       } catch (err: any) {
-        toast.error(err.message || 'Gagal memproses file Excel');
+        toast.error(err.message || 'Gagal memproses file Excel.');
       } finally {
         setImporting(false);
-        e.target.value = '';
       }
     };
     reader.readAsBinaryString(file);
@@ -166,17 +186,14 @@ export default function SuperAdminPassengers() {
     setLoading(true);
     try {
       const [empRes, routeRes] = await Promise.all([
-        supabase.from('employees').select('*, assigned_route:routes(route_name)').order('name', { ascending: true }),
+        supabase.from('employees').select('*').order('name', { ascending: true }),
         supabase.from('routes').select('*').order('route_name', { ascending: true }),
       ]);
 
-      if (empRes.error) throw empRes.error;
-      if (routeRes.error) throw routeRes.error;
-
-      setEmployees((empRes.data as any[]) || []);
-      setRoutes((routeRes.data as Route[]) || []);
+      if (empRes.data) setEmployees(empRes.data as Employee[]);
+      if (routeRes.data) setRoutes(routeRes.data as Route[]);
     } catch (err: any) {
-      toast.error(err.message || 'Gagal memuat daftar pengguna');
+      toast.error('Gagal memuat data karyawan/rute');
     } finally {
       setLoading(false);
     }
@@ -193,6 +210,7 @@ export default function SuperAdminPassengers() {
     setDepartment('Executive');
     setPhone('');
     setRole('employee');
+    setDriverType('vendor');
     setAssignedRouteId('');
     setShowModal(true);
   };
@@ -204,6 +222,7 @@ export default function SuperAdminPassengers() {
     setDepartment(emp.department || 'Executive');
     setPhone(emp.phone || '');
     setRole(emp.role);
+    setDriverType(emp.driver_type || 'vendor');
     setAssignedRouteId(emp.assigned_route_id || '');
     setShowModal(true);
   };
@@ -217,7 +236,7 @@ export default function SuperAdminPassengers() {
 
     setSubmitting(true);
     try {
-      const payload = {
+      const payload: any = {
         nik: nik.trim(),
         name: name.trim(),
         department: department.trim() || 'General',
@@ -225,6 +244,12 @@ export default function SuperAdminPassengers() {
         role,
         assigned_route_id: assignedRouteId || null,
       };
+
+      if (role === 'driver') {
+        payload.driver_type = driverType;
+      } else {
+        payload.driver_type = null;
+      }
 
       if (editingEmployee) {
         // Update
@@ -380,19 +405,32 @@ export default function SuperAdminPassengers() {
                       </div>
                     </div>
 
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        emp.role === 'superadmin'
-                          ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                          : emp.role === 'admin'
-                          ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                          : emp.role === 'driver'
-                          ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                          : 'bg-blue-50 text-blue-700 border border-blue-200'
-                      }`}
-                    >
-                      {emp.role}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          emp.role === 'superadmin'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : emp.role === 'admin'
+                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                            : emp.role === 'driver'
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}
+                      >
+                        {emp.role}
+                      </span>
+                      {emp.role === 'driver' && (
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            emp.driver_type === 'internal'
+                              ? 'bg-slate-100 text-slate-800 border border-slate-300'
+                              : 'bg-blue-50 text-blue-800 border border-blue-200'
+                          }`}
+                        >
+                          {emp.driver_type === 'internal' ? '🏢 Internal PT' : '💳 Sewa Vendor'}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
@@ -511,6 +549,25 @@ export default function SuperAdminPassengers() {
               <option value="superadmin">Superadmin (Akses Penuh)</option>
             </select>
           </div>
+
+          {role === 'driver' && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5">
+              <label className="text-xs font-bold text-blue-900 block">
+                🏢 Kategori / Tipe Driver <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={driverType}
+                onChange={(e) => setDriverType(e.target.value as 'internal' | 'vendor')}
+                className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-950 cursor-pointer"
+              >
+                <option value="vendor">💳 Driver Sewa Vendor (Masuk Tagihan Invoice)</option>
+                <option value="internal">🏢 Driver Internal PT (Armada / Supir Sendiri - Rp 0)</option>
+              </select>
+              <p className="text-[11px] text-blue-700">
+                Menentukan apakah unit yang dikemudikan driver ini otomatis ditagih di invoice atau Rp 0.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1">
