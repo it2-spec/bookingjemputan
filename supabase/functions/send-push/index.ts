@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
 
-  const { title, message } = await req.json();
+  const { title, message, targetEndpoint, targetEmployeeId } = await req.json();
   if (!title || !message) {
     return new Response(JSON.stringify({ error: 'title and message are required' }), {
       status: 400,
@@ -221,10 +221,15 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Fetch all push subscriptions
-  const { data: subscriptions, error } = await supabase
-    .from('push_subscriptions')
-    .select('*');
+  // Fetch push subscriptions (all or filtered by target)
+  let query = supabase.from('push_subscriptions').select('*');
+  if (targetEndpoint) {
+    query = query.eq('endpoint', targetEndpoint);
+  } else if (targetEmployeeId) {
+    query = query.eq('employee_id', targetEmployeeId);
+  }
+
+  const { data: subscriptions, error } = await query;
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
@@ -237,13 +242,26 @@ Deno.serve(async (req) => {
     (subscriptions as PushSubscription[]).map((sub) => sendWebPush(sub, title, message)),
   );
 
-  const sent = results.filter((r) => r.status === 'fulfilled' && r.value.ok).length;
+  const errorDetails: string[] = [];
+  const sent = results.filter((r) => {
+    if (r.status === 'fulfilled' && r.value.ok) return true;
+    if (r.status === 'fulfilled' && !r.value.ok && r.value.error) {
+      errorDetails.push(r.value.error);
+    } else if (r.status === 'rejected') {
+      errorDetails.push(String(r.reason));
+    }
+    return false;
+  }).length;
   const failed = results.length - sent;
 
-  // Remove invalid subscriptions (410 Gone)
+  // Remove invalid subscriptions (410 Gone or 404 Not Found)
   const staleEndpoints: string[] = [];
   results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && !r.value.ok && r.value.error?.includes('HTTP 410')) {
+    if (
+      r.status === 'fulfilled' &&
+      !r.value.ok &&
+      (r.value.error?.includes('HTTP 410') || r.value.error?.includes('HTTP 404'))
+    ) {
       staleEndpoints.push((subscriptions as PushSubscription[])[i].endpoint);
     }
   });
@@ -252,7 +270,13 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ success: true, sent, failed, total: subscriptions.length }),
+    JSON.stringify({
+      success: true,
+      sent,
+      failed,
+      total: subscriptions.length,
+      errors: errorDetails.slice(0, 5),
+    }),
     {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     },

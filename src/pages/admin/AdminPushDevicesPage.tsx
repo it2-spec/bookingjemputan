@@ -141,15 +141,18 @@ export default function AdminPushDevicesPage() {
         body: JSON.stringify({
           title: '🔔 Test Notifikasi TRACER',
           message: `Halo ${device.employee?.name || 'User'}, ini notifikasi uji coba ke perangkat Anda!`,
+          targetEndpoint: device.endpoint,
         }),
       });
 
       if (res.ok) {
         const result = await res.json();
         if (result.sent > 0) {
-          toast.success(`Push berhasil terkirim ke ${result.sent} perangkat!`);
+          toast.success(`Push berhasil terkirim ke perangkat ${device.employee?.name || ''}!`);
         } else {
-          toast.error(`Push gagal terkirim (status respon browser gagal atau token kadaluarsa).`);
+          const detail = result.errors?.[0] ? ` (${result.errors[0]})` : '';
+          toast.error(`Push gagal terkirim: Token expired atau browser menolak${detail}`);
+          fetchDevices();
         }
       } else {
         const errText = await res.text();
