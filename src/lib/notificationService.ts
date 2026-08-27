@@ -137,17 +137,27 @@ export async function showLocalNotification(title: string, body: string, icon?: 
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 
+  const notifIcon = icon || '/tracer.png';
+
   try {
     const registration = await navigator.serviceWorker.ready;
     await registration.showNotification(title, {
       body,
-      icon: icon || '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
-      tag: 'shuttle-reminder',
+      icon: notifIcon,
+      badge: '/tracer.png',
+      tag: 'shuttle-local-' + Date.now(),
+      requireInteraction: true,
+      renotify: true,
+      vibrate: [200, 100, 200, 100, 500],
+      silent: false,
       data: { url: '/' },
-    } as NotificationOptions);
+      actions: [
+        { action: 'open', title: '📱 Buka Aplikasi' },
+        { action: 'dismiss', title: 'Tutup' },
+      ],
+    } as any);
   } catch {
-    new Notification(title, { body, icon: icon || '/pwa-192x192.png' });
+    new Notification(title, { body, icon: notifIcon });
   }
 }
 

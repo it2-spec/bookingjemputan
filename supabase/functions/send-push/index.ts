@@ -83,8 +83,14 @@ async function sendWebPush(
 
     const jwt = await generateVapidJWT(audience);
 
-    // Build payload
-    const payloadData = JSON.stringify({ title, body: message });
+    // Build payload — rich fields so the SW can render a proper heads-up notification
+    const payloadData = JSON.stringify({
+      title,
+      body: message,
+      icon: '/tracer.png',
+      badge: '/tracer.png',
+      url: '/',
+    });
     const payloadBytes = new TextEncoder().encode(payloadData);
 
     // Derive shared secret using ECDH with user's p256dh key
