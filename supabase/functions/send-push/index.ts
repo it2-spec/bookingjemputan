@@ -1,17 +1,21 @@
 // ============================================================
 // Supabase Edge Function: send-push
-// Sends Web Push notifications to all subscribed users
+// Uses industry-standard web-push npm library for 100% RFC 8291 compliant encryption
 // Deploy with: supabase functions deploy send-push
 // ============================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import webpush from 'npm:web-push@3.6.7';
 
-// Web Push using VAPID via built-in crypto in Deno
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 
-interface PushSubscription {
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+interface PushSubscriptionRow {
   id: string;
   employee_id: string;
   endpoint: string;
@@ -19,181 +23,8 @@ interface PushSubscription {
   auth: string;
 }
 
-// Convert base64url to Uint8Array
-function base64urlToUint8Array(base64url: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
-  const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-// Convert Uint8Array to base64url
-function uint8ArrayToBase64url(bytes: Uint8Array): string {
-  const binary = String.fromCharCode(...bytes);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-// Generate VAPID JWT for Authorization header
-async function generateVapidJWT(audience: string): Promise<string> {
-  const header = { alg: 'ES256', typ: 'JWT' };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    aud: audience,
-    exp: now + 12 * 3600, // 12 hours
-    sub: VAPID_SUBJECT,
-  };
-
-  const encode = (obj: object) =>
-    uint8ArrayToBase64url(new TextEncoder().encode(JSON.stringify(obj)));
-
-  const signingInput = `${encode(header)}.${encode(payload)}`;
-
-  const privateKeyBytes = base64urlToUint8Array(VAPID_PRIVATE_KEY);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    privateKeyBytes,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign'],
-  );
-
-  const signature = await crypto.subtle.sign(
-    { name: 'ECDSA', hash: 'SHA-256' },
-    cryptoKey,
-    new TextEncoder().encode(signingInput),
-  );
-
-  const signatureBytes = new Uint8Array(signature);
-  return `${signingInput}.${uint8ArrayToBase64url(signatureBytes)}`;
-}
-
-// Send a single Web Push notification
-async function sendWebPush(
-  subscription: PushSubscription,
-  title: string,
-  message: string,
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const url = new URL(subscription.endpoint);
-    const audience = `${url.protocol}//${url.host}`;
-
-    const jwt = await generateVapidJWT(audience);
-
-    // Build payload — rich fields so the SW can render a proper heads-up notification
-    const payloadData = JSON.stringify({
-      title,
-      body: message,
-      icon: '/tracer.png',
-      badge: '/tracer.png',
-      url: '/',
-    });
-    const payloadBytes = new TextEncoder().encode(payloadData);
-
-    // Derive shared secret using ECDH with user's p256dh key
-    const serverKeyPair = await crypto.subtle.generateKey(
-      { name: 'ECDH', namedCurve: 'P-256' },
-      true,
-      ['deriveKey', 'deriveBits'],
-    );
-
-    // Import the user's public key (p256dh)
-    const userPublicKeyBytes = base64urlToUint8Array(subscription.p256dh);
-    const userPublicKey = await crypto.subtle.importKey(
-      'raw',
-      userPublicKeyBytes,
-      { name: 'ECDH', namedCurve: 'P-256' },
-      true,
-      [],
-    );
-
-    // Derive shared bits
-    const sharedBits = await crypto.subtle.deriveBits(
-      { name: 'ECDH', public: userPublicKey },
-      serverKeyPair.privateKey,
-      256,
-    );
-
-    // Export server public key for header
-    const serverPublicKeyRaw = await crypto.subtle.exportKey('raw', serverKeyPair.publicKey);
-    const serverPublicKeyBytes = new Uint8Array(serverPublicKeyRaw);
-
-    // Auth secret
-    const authBytes = base64urlToUint8Array(subscription.auth);
-
-    // HKDF to derive content encryption key and nonce
-    const prk = await crypto.subtle.importKey('raw', new Uint8Array(sharedBits), 'HKDF', false, ['deriveKey', 'deriveBits']);
-
-    // Use simple AES-GCM encryption with derived key
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-
-    const inputKeyMaterial = await crypto.subtle.importKey(
-      'raw',
-      new Uint8Array(sharedBits),
-      { name: 'HKDF' },
-      false,
-      ['deriveBits'],
-    );
-
-    const keyBits = await crypto.subtle.deriveBits(
-      {
-        name: 'HKDF',
-        hash: 'SHA-256',
-        salt: authBytes,
-        info: new TextEncoder().encode('Content-Encoding: aesgcm\0'),
-      },
-      inputKeyMaterial,
-      128,
-    );
-
-    const encryptionKey = await crypto.subtle.importKey('raw', keyBits, 'AES-GCM', false, ['encrypt']);
-
-    const nonceBits = await crypto.subtle.deriveBits(
-      {
-        name: 'HKDF',
-        hash: 'SHA-256',
-        salt: authBytes,
-        info: new TextEncoder().encode('Content-Encoding: nonce\0'),
-      },
-      prk,
-      96,
-    );
-    const nonce = new Uint8Array(nonceBits);
-
-    const paddedPayload = new Uint8Array(payloadBytes.length + 2);
-    paddedPayload.set([0, 0]); // no padding
-    paddedPayload.set(payloadBytes, 2);
-
-    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, encryptionKey, paddedPayload);
-
-    const response = await fetch(subscription.endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `vapid t=${jwt}, k=${VAPID_PUBLIC_KEY}`,
-        'Content-Type': 'application/octet-stream',
-        'Content-Encoding': 'aesgcm',
-        'Encryption': `salt=${uint8ArrayToBase64url(salt)}`,
-        'Crypto-Key': `dh=${uint8ArrayToBase64url(serverPublicKeyBytes)};p256ecdsa=${VAPID_PUBLIC_KEY}`,
-        'TTL': '86400',
-      },
-      body: encrypted,
-    });
-
-    if (response.status === 201 || response.status === 200 || response.status === 204) {
-      return { ok: true };
-    }
-    const errorText = await response.text();
-    return { ok: false, error: `HTTP ${response.status}: ${errorText}` };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
 Deno.serve(async (req) => {
-  // CORS
+  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       headers: {
@@ -221,7 +52,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Fetch push subscriptions (all or filtered by target)
+  // Fetch push subscriptions
   let query = supabase.from('push_subscriptions').select('*');
   if (targetEndpoint) {
     query = query.eq('endpoint', targetEndpoint);
@@ -238,33 +69,56 @@ Deno.serve(async (req) => {
     });
   }
 
+  const payload = JSON.stringify({
+    title,
+    body: message,
+    icon: '/tracer.png',
+    badge: '/tracer.png',
+    url: '/',
+    tag: 'shuttle-' + Date.now(),
+  });
+
   const results = await Promise.allSettled(
-    (subscriptions as PushSubscription[]).map((sub) => sendWebPush(sub, title, message)),
+    (subscriptions as PushSubscriptionRow[]).map(async (sub) => {
+      const pushSubscription = {
+        endpoint: sub.endpoint,
+        keys: {
+          p256dh: sub.p256dh,
+          auth: sub.auth,
+        },
+      };
+
+      return await webpush.sendNotification(pushSubscription, payload, {
+        TTL: 86400,
+        urgency: 'high',
+      });
+    }),
   );
 
   const errorDetails: string[] = [];
-  const sent = results.filter((r) => {
-    if (r.status === 'fulfilled' && r.value.ok) return true;
-    if (r.status === 'fulfilled' && !r.value.ok && r.value.error) {
-      errorDetails.push(r.value.error);
-    } else if (r.status === 'rejected') {
-      errorDetails.push(String(r.reason));
-    }
-    return false;
-  }).length;
-  const failed = results.length - sent;
-
-  // Remove invalid subscriptions (410 Gone or 404 Not Found)
   const staleEndpoints: string[] = [];
+
+  let sent = 0;
   results.forEach((r, i) => {
-    if (
-      r.status === 'fulfilled' &&
-      !r.value.ok &&
-      (r.value.error?.includes('HTTP 410') || r.value.error?.includes('HTTP 404'))
-    ) {
-      staleEndpoints.push((subscriptions as PushSubscription[])[i].endpoint);
+    const sub = (subscriptions as PushSubscriptionRow[])[i];
+    if (r.status === 'fulfilled') {
+      sent++;
+    } else {
+      const err = r.reason;
+      const statusCode = err?.statusCode;
+      const errMsg = err?.body || err?.message || String(err);
+      errorDetails.push(`Status ${statusCode || 'ERR'}: ${errMsg}`);
+
+      // If token is gone or expired (404 / 410)
+      if (statusCode === 404 || statusCode === 410) {
+        staleEndpoints.push(sub.endpoint);
+      }
     }
   });
+
+  const failed = results.length - sent;
+
+  // Clean up stale endpoints from DB
   if (staleEndpoints.length > 0) {
     await supabase.from('push_subscriptions').delete().in('endpoint', staleEndpoints);
   }
