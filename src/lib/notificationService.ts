@@ -1,6 +1,6 @@
-// ============================================================
-// Push Notification Service
-// ============================================================
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
@@ -19,17 +19,34 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
- * Request notification permission from the user.
+ * Request notification permission from the user (handles both Native APK & Web).
  */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const permStatus = await PushNotifications.requestPermissions();
+      if (permStatus.receive === 'granted') {
+        return 'granted';
+      } else if (permStatus.receive === 'denied') {
+        return 'denied';
+      }
+      return 'default';
+    } catch {
+      return 'denied';
+    }
+  }
+
   if (!('Notification' in window)) return 'denied';
   return await Notification.requestPermission();
 }
 
 /**
- * Check if push notifications are supported.
+ * Check if push notifications are supported (handles both Native APK & Web).
  */
 export async function isPushSupported(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    return true;
+  }
   return (
     'Notification' in window &&
     'serviceWorker' in navigator &&
@@ -38,11 +55,42 @@ export async function isPushSupported(): Promise<boolean> {
 }
 
 /**
- * Subscribe the current device to Web Push and save to Supabase.
- * Returns the raw PushSubscription or null on failure.
+ * Subscribe the current device to Push and save to Supabase.
  */
-export async function subscribeToPush(employeeId: string): Promise<PushSubscription | null> {
+export async function subscribeToPush(employeeId: string): Promise<any> {
   try {
+    if (Capacitor.isNativePlatform()) {
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive !== 'granted') {
+        const req = await PushNotifications.requestPermissions();
+        if (req.receive !== 'granted') return null;
+      }
+
+      await PushNotifications.register();
+
+      // Listen for registration token
+      return new Promise((resolve) => {
+        PushNotifications.addListener('registration', async (token) => {
+          const { supabase } = await import('./supabase');
+          await supabase.from('push_subscriptions').upsert(
+            {
+              employee_id: employeeId,
+              endpoint: `native:fcm:${token.value}`,
+              p256dh: token.value,
+              auth: 'native-android',
+            },
+            { onConflict: 'endpoint' }
+          );
+          resolve(token);
+        });
+
+        PushNotifications.addListener('registrationError', (err) => {
+          console.warn('[Push] Native register error:', err);
+          resolve(null);
+        });
+      });
+    }
+
     if (!(await isPushSupported())) return null;
     if (Notification.permission !== 'granted') return null;
     if (!VAPID_PUBLIC_KEY) {
@@ -55,7 +103,6 @@ export async function subscribeToPush(employeeId: string): Promise<PushSubscript
     // Check if already subscribed
     const existing = await registration.pushManager.getSubscription();
     if (existing) {
-      // Ensure it's saved to DB (idempotent upsert)
       await savePushSubscription(employeeId, existing);
       return existing;
     }
@@ -118,9 +165,20 @@ export async function unsubscribeFromPush(employeeId: string) {
 }
 
 /**
- * Get current push subscription status from the browser.
+ * Get current push subscription status from the browser / native APK.
  */
 export async function getPushSubscriptionStatus(): Promise<'granted' | 'denied' | 'default' | 'subscribed'> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive === 'granted') return 'subscribed';
+      if (perm.receive === 'denied') return 'denied';
+      return 'default';
+    } catch {
+      return 'default';
+    }
+  }
+
   if (!(await isPushSupported())) return 'denied';
   if (Notification.permission === 'denied') return 'denied';
   if (Notification.permission === 'default') return 'default';
@@ -134,6 +192,27 @@ export async function getPushSubscriptionStatus(): Promise<'granted' | 'denied' 
  * Show a local notification (fallback for when app is open).
  */
 export async function showLocalNotification(title: string, body: string, icon?: string) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title,
+            body,
+            id: Math.floor(Math.random() * 1000000),
+            schedule: { at: new Date(Date.now() + 100) },
+            sound: 'beep.wav',
+            actionTypeId: '',
+            extra: null,
+          },
+        ],
+      });
+      return;
+    } catch (e) {
+      console.warn('[LocalNotif] Capacitor failed:', e);
+    }
+  }
+
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 
