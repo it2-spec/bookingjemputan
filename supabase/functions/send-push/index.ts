@@ -74,8 +74,10 @@ Deno.serve(async (req) => {
     body: message,
     icon: '/tracer.png',
     badge: '/tracer.png',
+    image: '/tracer.png',
     url: '/',
     tag: 'shuttle-' + Date.now(),
+    timestamp: Date.now(),
   });
 
   const results = await Promise.allSettled(
@@ -91,6 +93,9 @@ Deno.serve(async (req) => {
       return await webpush.sendNotification(pushSubscription, payload, {
         TTL: 86400,
         urgency: 'high',
+        headers: {
+          'Urgency': 'high',
+        },
       });
     }),
   );
