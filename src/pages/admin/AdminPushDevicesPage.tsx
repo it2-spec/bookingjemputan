@@ -169,11 +169,22 @@ export default function AdminPushDevicesPage() {
   };
 
   const getBrowserInfo = (endpoint: string) => {
-    if (endpoint.includes('fcm.googleapis.com') || endpoint.includes('google.com')) return { name: 'Google Chrome / Android FCM', color: 'text-amber-600 bg-amber-50' };
-    if (endpoint.includes('mozilla.com')) return { name: 'Mozilla Firefox', color: 'text-orange-600 bg-orange-50' };
-    if (endpoint.includes('apple.com')) return { name: 'Apple Safari / iOS APNs', color: 'text-blue-600 bg-blue-50' };
-    if (endpoint.includes('microsoft.com') || endpoint.includes('windows.com')) return { name: 'Microsoft Edge / Windows', color: 'text-cyan-600 bg-cyan-50' };
-    return { name: 'Web Push Gateway', color: 'text-slate-600 bg-slate-50' };
+    if (endpoint.startsWith('native:') || endpoint.includes('native-android')) {
+      return { name: '📱 Android Native (APK)', color: 'text-emerald-700 bg-emerald-50 border border-emerald-200' };
+    }
+    if (endpoint.includes('fcm.googleapis.com') || endpoint.includes('google.com')) {
+      return { name: '🌐 Chrome / Android PWA', color: 'text-amber-700 bg-amber-50 border border-amber-200' };
+    }
+    if (endpoint.includes('mozilla.com')) {
+      return { name: '🦊 Mozilla Firefox', color: 'text-orange-700 bg-orange-50 border border-orange-200' };
+    }
+    if (endpoint.includes('apple.com')) {
+      return { name: '🍎 Apple Safari / iOS APNs', color: 'text-blue-700 bg-blue-50 border border-blue-200' };
+    }
+    if (endpoint.includes('microsoft.com') || endpoint.includes('windows.com')) {
+      return { name: '💻 Microsoft Edge / Windows', color: 'text-cyan-700 bg-cyan-50 border border-cyan-200' };
+    }
+    return { name: 'Web Push Gateway', color: 'text-slate-700 bg-slate-50 border border-slate-200' };
   };
 
   const filteredDevices = devices.filter((d) => {

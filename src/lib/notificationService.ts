@@ -194,6 +194,18 @@ export async function getPushSubscriptionStatus(): Promise<'granted' | 'denied' 
 export async function showLocalNotification(title: string, body: string, icon?: string) {
   if (Capacitor.isNativePlatform()) {
     try {
+      await LocalNotifications.createChannel({
+        id: 'tracer_high_priority_channel',
+        name: 'Notifikasi Penting Jemputan',
+        description: 'Notifikasi pengingat pemesanan shuttle & status penjemputan',
+        importance: 5, // High / Max priority (Heads-up alert)
+        visibility: 1, // Public on lockscreen
+        sound: 'beep.wav',
+        vibration: true,
+        lights: true,
+        lightColor: '#1e40af',
+      });
+
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -201,6 +213,7 @@ export async function showLocalNotification(title: string, body: string, icon?: 
             body,
             id: Math.floor(Math.random() * 1000000),
             schedule: { at: new Date(Date.now() + 100) },
+            channelId: 'tracer_high_priority_channel',
             sound: 'beep.wav',
             actionTypeId: '',
             extra: null,
