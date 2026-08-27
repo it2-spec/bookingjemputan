@@ -5,7 +5,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Bus, CreditCard, ArrowRight } from 'lucide-react';
+import { CreditCard, ArrowRight } from 'lucide-react';
+import tracerLogo from '../assets/tracer.png';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
@@ -71,9 +72,9 @@ export default function LoginPage() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-primary-600 text-white shadow-lg shadow-primary-600/30 mb-4"
+            className="inline-flex items-center justify-center w-28 h-28 rounded-3xl bg-white shadow-xl shadow-slate-200/50 p-2 mb-4 border border-slate-100"
           >
-            <Bus className="w-10 h-10 text-white" />
+            <img src={tracerLogo} alt="TRACER Logo" className="w-full h-full object-contain rounded-2xl" />
           </motion.div>
           <motion.h1
             initial={{ opacity: 0 }}
@@ -81,7 +82,7 @@ export default function LoginPage() {
             transition={{ delay: 0.3 }}
             className="text-3xl font-extrabold text-slate-900 font-[family-name:var(--font-display)] tracking-tight"
           >
-            Shuttle Booking
+            TRACER
           </motion.h1>
           <motion.p
             initial={{ opacity: 0 }}
@@ -89,7 +90,7 @@ export default function LoginPage() {
             transition={{ delay: 0.4 }}
             className="text-slate-700 mt-2 text-sm font-semibold"
           >
-            Reservasi shuttle karyawan harian
+            Reservasi shuttle karyawan PT. Sakae Riken Indonesia
           </motion.p>
         </div>
 
@@ -110,7 +111,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <Input
               label="Nomor Induk Karyawan (NIK)"
-              placeholder="Contoh: 1001"
+              placeholder="Masukkan NIK Anda"
               value={nik}
               onChange={(e) => {
                 setNik(e.target.value);
@@ -146,7 +147,7 @@ export default function LoginPage() {
           transition={{ delay: 0.8 }}
           className="text-center text-xs text-slate-700 mt-8 font-bold"
         >
-          © 2026 Shuttle Booking v1.0
+          © 2026 QCC Tracer Team v2.0
         </motion.p>
       </motion.div>
     </div>

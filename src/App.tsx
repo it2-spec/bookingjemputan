@@ -22,6 +22,7 @@ import ProfilePage from './pages/ProfilePage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPassengerList from './pages/admin/AdminPassengerList';
 import AdminRouteApprovalList from './pages/admin/AdminRouteApprovalList';
+import AdminPushDevicesPage from './pages/admin/AdminPushDevicesPage';
 import { DriverDashboard } from './pages/driver/DriverDashboard';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
 import SuperAdminPassengers from './pages/superadmin/SuperAdminPassengers';
@@ -63,6 +64,7 @@ const router = createBrowserRouter([
       { index: true, element: <AdminDashboard /> },
       { path: 'passengers', element: <AdminPassengerList /> },
       { path: 'approvals', element: <AdminRouteApprovalList /> },
+      { path: 'devices', element: <AdminPushDevicesPage /> },
     ],
   },
   {
@@ -73,6 +75,7 @@ const router = createBrowserRouter([
       { path: 'approvals', element: <AdminRouteApprovalList /> },
       { path: 'drivers', element: <DriverDashboard /> },
       { path: 'passengers', element: <SuperAdminPassengers /> },
+      { path: 'devices', element: <AdminPushDevicesPage /> },
       { path: 'invoice', element: <SuperAdminInvoice /> },
     ],
   },

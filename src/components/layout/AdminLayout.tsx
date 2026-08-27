@@ -5,13 +5,15 @@
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LoadingScreen } from '../shared/LoadingScreen';
-import { Shield, LayoutDashboard, Users, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, ArrowLeft, Smartphone } from 'lucide-react';
+import tracerLogo from '../../assets/tracer.png';
 import { cn } from '../../lib/utils';
 
 const adminNavItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { path: '/admin/passengers', label: 'Penumpang', icon: Users, exact: false },
   { path: '/admin/approvals', label: 'Approval Rute', icon: Shield, exact: false },
+  { path: '/admin/devices', label: 'Perangkat Terdaftar', icon: Smartphone, exact: false },
 ];
 
 export function AdminLayout() {
@@ -38,14 +40,14 @@ export function AdminLayout() {
             <ArrowLeft className="w-5 h-5 text-slate-600" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center p-0.5">
+              <img src={tracerLogo} alt="TRACER" className="w-full h-full object-contain rounded" />
             </div>
             <div>
               <h1 className="text-sm font-bold text-slate-900 font-[family-name:var(--font-display)]">
                 Admin Panel
               </h1>
-              <p className="text-[10px] text-slate-600 font-medium">Shuttle Booking</p>
+              <p className="text-[10px] text-slate-600 font-medium">TEAM TRACER</p>
             </div>
           </div>
         </div>

@@ -452,13 +452,21 @@ export default function AdminDashboard() {
 
       {/* Broadcast result banner */}
       {broadcastResult && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-50 border border-primary-200 text-xs">
-          <Bell className="w-3.5 h-3.5 text-primary-500 shrink-0" />
-          <span className="text-primary-700">
-            Push terkirim ke <strong>{broadcastResult.sent}</strong> perangkat
-            {broadcastResult.failed > 0 && <>, <span className="text-red-500">{broadcastResult.failed} gagal</span></>}
-            {' '}(total terdaftar: {broadcastResult.total})
-          </span>
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-primary-50 border border-primary-200 text-xs">
+          <div className="flex items-center gap-2">
+            <Bell className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+            <span className="text-primary-700">
+              Push terkirim ke <strong>{broadcastResult.sent}</strong> perangkat
+              {broadcastResult.failed > 0 && <>, <span className="text-red-500 font-semibold">{broadcastResult.failed} gagal</span></>}
+              {' '}(total terdaftar: {broadcastResult.total})
+            </span>
+          </div>
+          <button
+            onClick={() => navigate('/admin/devices')}
+            className="text-primary-600 font-bold hover:underline ml-2 shrink-0 cursor-pointer"
+          >
+            Lihat Perangkat &rarr;
+          </button>
         </div>
       )}
 

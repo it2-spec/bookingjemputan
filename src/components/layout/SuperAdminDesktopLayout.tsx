@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LoadingScreen } from '../shared/LoadingScreen';
+import tracerLogo from '../../assets/tracer.png';
 import {
-  ShieldCheck,
   LayoutDashboard,
   Users,
   CheckSquare,
@@ -14,6 +14,7 @@ import {
   Search,
   SlidersHorizontal,
   FileText,
+  Smartphone,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -22,6 +23,7 @@ const superAdminNav = [
   { path: '/superadmin/approvals', label: 'Approval Rute Penumpang', icon: CheckSquare, badge: 'New' },
   { path: '/superadmin/drivers', label: 'Live Location Driver', icon: Navigation },
   { path: '/superadmin/passengers', label: 'Daftar Karyawan / Driver', icon: Users },
+  { path: '/superadmin/devices', label: 'Perangkat Terdaftar (Push)', icon: Smartphone },
   { path: '/superadmin/invoice', label: 'Rekap Invoice Armada', icon: FileText },
 ];
 
@@ -53,13 +55,13 @@ export function SuperAdminDesktopLayout() {
           {/* Logo Header */}
           <div className="h-16 border-b border-slate-200 px-4 flex items-center justify-between">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/30 shrink-0">
-                <ShieldCheck className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center p-1 border border-slate-200 shadow-sm shrink-0">
+                <img src={tracerLogo} alt="TRACER Logo" className="w-full h-full object-contain rounded-lg" />
               </div>
               {!collapsed && (
                 <div>
                   <h1 className="text-sm font-bold text-slate-900 tracking-wide font-[family-name:var(--font-display)]">
-                    GO-SHUTTLE
+                    TEAM TRACER
                   </h1>
                   <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">
                     Superadmin Workspace

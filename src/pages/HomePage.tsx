@@ -39,6 +39,7 @@ import {
 } from '../lib/vehicleLogic';
 import { getGreeting, getVehicleIcon, padZero, cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
+import tracerLogo from '../assets/tracer.png';
 import toast from 'react-hot-toast';
 
 export default function HomePage() {
@@ -166,16 +167,21 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center justify-between"
       >
-        <div>
-          <p className="text-sm text-slate-600 font-medium">
-            {getGreeting()} 👋
-          </p>
-          <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
-            {employee?.name}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {employee?.department}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm p-1 flex items-center justify-center shrink-0">
+            <img src={tracerLogo} alt="TRACER Logo" className="w-full h-full object-contain rounded-xl" />
+          </div>
+          <div>
+            <p className="text-sm text-slate-600 font-medium">
+              {getGreeting()} 👋
+            </p>
+            <h1 className="text-xl font-bold text-slate-900 font-[family-name:var(--font-display)]">
+              {employee?.name}
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {employee?.department}
+            </p>
+          </div>
         </div>
         {employee?.role === 'admin' && (
           <button
