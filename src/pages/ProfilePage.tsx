@@ -42,7 +42,7 @@ import { getInitials } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
-  const { employee, logout } = useAuth();
+  const { employee, logout, updateEmployeeState } = useAuth();
   const navigate = useNavigate();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isDark, setIsDark] = useState(
@@ -53,6 +53,11 @@ export default function ProfilePage() {
   // 'subscribed' | 'granted' (perm ok but not subscribed) | 'default' | 'denied'
   const [pushStatus, setPushStatus] = useState<'subscribed' | 'granted' | 'default' | 'denied'>('default');
   const [pushLoading, setPushLoading] = useState(false);
+
+  // Phone edit state
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(employee?.phone || '');
+  const [savingPhone, setSavingPhone] = useState(false);
 
   // Route change request state
   const [allRoutes, setAllRoutes] = useState<Route[]>([]);
@@ -70,6 +75,7 @@ export default function ProfilePage() {
     );
   });
   const [savingDefaultPickup, setSavingDefaultPickup] = useState(false);
+
 
   useEffect(() => {
     const saved =
@@ -107,7 +113,32 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSavePhone = async () => {
+    if (!employee) return;
+    const clean = phoneInput.trim().replace(/[^0-9+]/g, '');
+    if (!clean || clean.length < 9) {
+      toast.error('Nomor WhatsApp tidak valid (min. 9 digit)!');
+      return;
+    }
+    setSavingPhone(true);
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ phone: clean })
+        .eq('id', employee.id);
+      if (error) throw error;
+      updateEmployeeState({ phone: clean });
+      toast.success('Nomor telepon berhasil diperbarui! 📱');
+      setShowPhoneDialog(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menyimpan nomor telepon');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
   const fetchRouteInfo = async () => {
+
     if (!employee) return;
     try {
       // Restore default pickup point from DB or local cache
@@ -213,17 +244,29 @@ export default function ProfilePage() {
   const handleSubscribe = async () => {
     if (!employee) return;
     setPushLoading(true);
-    await subscribeToPush(employee.id);
-    await refreshPushStatus();
-    setPushLoading(false);
+    try {
+      await subscribeToPush(employee.id);
+      toast.success('Notifikasi berhasil diaktifkan');
+    } catch {
+      toast.error('Gagal mengaktifkan notifikasi');
+    } finally {
+      await refreshPushStatus();
+      setPushLoading(false);
+    }
   };
 
   const handleUnsubscribe = async () => {
     if (!employee) return;
     setPushLoading(true);
-    await unsubscribeFromPush(employee.id);
-    await refreshPushStatus();
-    setPushLoading(false);
+    try {
+      await unsubscribeFromPush(employee.id);
+      toast.success('Langganan notifikasi berhasil dibatalkan');
+    } catch {
+      toast.error('Gagal membatalkan langganan');
+    } finally {
+      await refreshPushStatus();
+      setPushLoading(false);
+    }
   };
 
   const handleTestNotification = async () => {
@@ -309,14 +352,27 @@ export default function ProfilePage() {
               locked
             />
             <div className="border-b border-slate-100" />
-            <ProfileField
-              icon={<Phone className="w-4 h-4" />}
-              label="No. Telepon"
-              value={employee.phone || '-'}
-            />
+            <div className="flex items-center justify-between">
+              <ProfileField
+                icon={<Phone className="w-4 h-4" />}
+                label="No. WhatsApp / HP"
+                value={employee.phone || 'Belum diisi'}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setPhoneInput(employee.phone || '');
+                  setShowPhoneDialog(true);
+                }}
+                className="px-2.5 py-1 text-xs font-semibold text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg border border-primary-200 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Ubah
+              </button>
+            </div>
           </div>
         </Card>
       </motion.div>
+
 
       {/* Rute Jemputan Terdaftar Card */}
       <motion.div
@@ -735,8 +791,56 @@ export default function ProfilePage() {
           </div>
         </div>
       </Dialog>
+
+      {/* Edit Phone Dialog */}
+
+      <Dialog
+        isOpen={showPhoneDialog}
+        onClose={() => setShowPhoneDialog(false)}
+        title="Ubah Nomor WhatsApp / HP"
+      >
+        <div className="space-y-4 py-2">
+          <p className="text-xs text-slate-600">
+            Pastikan nomor WhatsApp Anda aktif agar supir atau admin dapat menghubungi Anda terkait penjemputan.
+          </p>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-800 block mb-1">
+              Nomor WhatsApp / HP Aktif <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="tel"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
+              placeholder="Contoh: 081234567890"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 text-slate-900 font-semibold"
+              required
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => setShowPhoneDialog(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="primary"
+              fullWidth
+              disabled={savingPhone || !phoneInput.trim()}
+              onClick={handleSavePhone}
+              icon={<CheckCircle2 className="w-4 h-4" />}
+            >
+              {savingPhone ? 'Menyimpan...' : 'Simpan Nomor'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
+
 }
 
 function ProfileField({

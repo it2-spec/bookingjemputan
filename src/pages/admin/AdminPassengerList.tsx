@@ -13,7 +13,10 @@ import {
   MapPin,
   UserPlus,
   ShieldCheck,
+  Moon,
+  CheckCircle,
 } from 'lucide-react';
+
 import * as XLSX from 'xlsx';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -84,6 +87,9 @@ export default function AdminPassengerList() {
       Kendaraan: b.vehicle_type,
       Tanggal: b.departure_date,
       Status: b.status,
+      Status_Kepulangan: (b as any).is_overtime_no_return
+        ? 'Lembur (Tidak Pulang Reguler 16:30)'
+        : 'Ikut Pulang Reguler (16:30)',
       Waktu_Pesan: formatTimeWIB(b.created_at),
     }));
 
@@ -97,6 +103,26 @@ export default function AdminPassengerList() {
     );
     toast.success('File Excel berhasil di-download! 📊');
   };
+
+  const handleToggleOvertime = async (booking: Booking) => {
+    const newStatus = !(booking as any).is_overtime_no_return;
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ is_overtime_no_return: newStatus })
+        .eq('id', booking.id);
+      if (error) throw error;
+      toast.success(
+        newStatus
+          ? `${(booking as any).employee?.name || 'Penumpang'} ditandai LEMBUR (Tidak Ikut Pulang 16:30) 🌙`
+          : `${(booking as any).employee?.name || 'Penumpang'} diset IKUT PULANG PP 🚗`
+      );
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengubah status kepulangan');
+    }
+  };
+
 
   const handleAdminCancel = async () => {
     if (!cancellingBooking) return;
@@ -270,6 +296,11 @@ export default function AdminPassengerList() {
                           <Badge variant={isConfirmed ? 'success' : 'danger'}>
                             {booking.status}
                           </Badge>
+                          {(booking as any).is_overtime_no_return && (
+                            <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-bold border border-purple-300 flex items-center gap-1 shadow-2xs">
+                              <Moon className="w-3 h-3 text-purple-600" /> Lembur (Off Pulang)
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           NIK: <span className="font-mono text-slate-700">{emp?.nik}</span> • {emp?.department}
@@ -325,11 +356,11 @@ export default function AdminPassengerList() {
                               </select>
                             </div>
                           ) : (
-                            booking.unit_number && booking.unit_number > 1 && (
+                            (rte?.unit_count || 1) > 1 && booking.unit_number && booking.unit_number > 1 ? (
                               <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
                                 🚗 Unit {booking.unit_number} {rte?.route_name.toLowerCase().includes('karawang barat') ? (booking.unit_number === 2 ? '(Galuh Mas)' : '(Tanjung Pura)') : ''}
                               </span>
-                            )
+                            ) : null
                           )}
                           <span className="flex items-center gap-1">
                             <Bus className="w-3 h-3 text-sky-500" />
@@ -341,17 +372,41 @@ export default function AdminPassengerList() {
 
                     {/* Actions */}
                     {isConfirmed && (
-                      <div className="flex items-center justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                      <div className="flex flex-wrap items-center justify-end gap-2 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleOvertime(booking)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs border ${
+                            (booking as any).is_overtime_no_return
+                              ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700'
+                              : 'bg-white hover:bg-purple-50 text-purple-700 border-purple-200'
+                          }`}
+                          title={(booking as any).is_overtime_no_return ? 'Klik untuk kembalikan ke Ikut Pulang Reguler' : 'Tandai Karyawan Lembur (Tidak Ikut Pulang Sore 16:30)'}
+                        >
+                          {(booking as any).is_overtime_no_return ? (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>Lembur (Off Pulang)</span>
+                            </>
+                          ) : (
+                            <>
+                              <Moon className="w-3.5 h-3.5 text-purple-500" />
+                              <span>Tandai Lembur</span>
+                            </>
+                          )}
+                        </button>
+
                         <Button
                           variant="danger"
                           size="sm"
                           icon={<XCircle className="w-4 h-4" />}
                           onClick={() => setCancellingBooking(booking)}
                         >
-                          Batalkan (Admin)
+                          Batalkan
                         </Button>
                       </div>
                     )}
+
                   </div>
                 </Card>
               </motion.div>

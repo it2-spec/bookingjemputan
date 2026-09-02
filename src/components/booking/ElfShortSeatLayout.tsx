@@ -13,7 +13,7 @@ import { SeatButton } from './SeatButton';
 import type { SeatStatus } from '../../lib/types';
 
 interface ElfShortSeatLayoutProps {
-  seats: Map<number, { status: SeatStatus; bookedBy?: string }>;
+  seats: Map<number, { status: SeatStatus; bookedBy?: string; isOvertime?: boolean }>;
   onSeatClick: (seatNumber: number) => void;
 }
 
@@ -42,6 +42,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={1}
             status={getSeat(1).status}
             bookedByName={getSeat(1).bookedBy}
+            isOvertime={getSeat(1).isOvertime}
             onClick={() => onSeatClick(1)}
             size="sm"
           />
@@ -60,6 +61,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={2}
             status={getSeat(2).status}
             bookedByName={getSeat(2).bookedBy}
+            isOvertime={getSeat(2).isOvertime}
             onClick={() => onSeatClick(2)}
             size="sm"
           />
@@ -67,6 +69,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={3}
             status={getSeat(3).status}
             bookedByName={getSeat(3).bookedBy}
+            isOvertime={getSeat(3).isOvertime}
             onClick={() => onSeatClick(3)}
             size="sm"
           />
@@ -74,6 +77,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={4}
             status={getSeat(4).status}
             bookedByName={getSeat(4).bookedBy}
+            isOvertime={getSeat(4).isOvertime}
             onClick={() => onSeatClick(4)}
             size="sm"
           />
@@ -86,6 +90,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={5}
             status={getSeat(5).status}
             bookedByName={getSeat(5).bookedBy}
+            isOvertime={getSeat(5).isOvertime}
             onClick={() => onSeatClick(5)}
             size="sm"
           />
@@ -93,6 +98,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={6}
             status={getSeat(6).status}
             bookedByName={getSeat(6).bookedBy}
+            isOvertime={getSeat(6).isOvertime}
             onClick={() => onSeatClick(6)}
             size="sm"
           />
@@ -100,6 +106,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={7}
             status={getSeat(7).status}
             bookedByName={getSeat(7).bookedBy}
+            isOvertime={getSeat(7).isOvertime}
             onClick={() => onSeatClick(7)}
             size="sm"
           />
@@ -112,6 +119,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={8}
             status={getSeat(8).status}
             bookedByName={getSeat(8).bookedBy}
+            isOvertime={getSeat(8).isOvertime}
             onClick={() => onSeatClick(8)}
             size="sm"
           />
@@ -119,6 +127,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={9}
             status={getSeat(9).status}
             bookedByName={getSeat(9).bookedBy}
+            isOvertime={getSeat(9).isOvertime}
             onClick={() => onSeatClick(9)}
             size="sm"
           />
@@ -126,6 +135,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={10}
             status={getSeat(10).status}
             bookedByName={getSeat(10).bookedBy}
+            isOvertime={getSeat(10).isOvertime}
             onClick={() => onSeatClick(10)}
             size="sm"
           />
@@ -137,6 +147,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={11}
             status={getSeat(11).status}
             bookedByName={getSeat(11).bookedBy}
+            isOvertime={getSeat(11).isOvertime}
             onClick={() => onSeatClick(11)}
             size="sm"
           />
@@ -144,6 +155,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={12}
             status={getSeat(12).status}
             bookedByName={getSeat(12).bookedBy}
+            isOvertime={getSeat(12).isOvertime}
             onClick={() => onSeatClick(12)}
             size="sm"
           />
@@ -151,6 +163,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={13}
             status={getSeat(13).status}
             bookedByName={getSeat(13).bookedBy}
+            isOvertime={getSeat(13).isOvertime}
             onClick={() => onSeatClick(13)}
             size="sm"
           />
@@ -158,6 +171,7 @@ export function ElfShortSeatLayout({ seats, onSeatClick }: ElfShortSeatLayoutPro
             seatNumber={14}
             status={getSeat(14).status}
             bookedByName={getSeat(14).bookedBy}
+            isOvertime={getSeat(14).isOvertime}
             onClick={() => onSeatClick(14)}
             size="sm"
           />

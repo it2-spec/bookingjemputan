@@ -41,6 +41,8 @@ export default function LoginPage() {
         navigate('/driver', { replace: true });
       } else if (role === 'admin') {
         navigate('/admin', { replace: true });
+      } else if (role === 'vendor') {
+        navigate('/vendor', { replace: true });
       } else {
         navigate('/', { replace: true });
       }

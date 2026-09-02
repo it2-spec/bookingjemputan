@@ -170,3 +170,53 @@ export function getTimeUntilDeadline(): { hours: number; minutes: number; second
 
   return { hours, minutes, seconds };
 }
+
+/**
+ * Normalizes bookings for multi-unit vehicles (e.g. 2x Avanza).
+ * Ensures every passenger in the unit gets a visible seat (1..maxSeats),
+ * even if they originally booked when layout was Elf Short (seat_number > maxSeats).
+ */
+export function normalizeUnitBookings(
+  unitBookings: any[],
+  maxSeats: number = 6,
+  targetEmployeeId?: string
+): { normalizedBookings: any[]; targetSeat: number | null } {
+  const occupiedSeats = new Set<number>();
+  const normalized: any[] = [];
+  const overflow: any[] = [];
+  let resolvedTargetSeat: number | null = null;
+
+  // Pass 1: Keep valid seat numbers within range (1..maxSeats) that aren't collided
+  for (const b of unitBookings) {
+    if (b.seat_number >= 1 && b.seat_number <= maxSeats && !occupiedSeats.has(b.seat_number)) {
+      occupiedSeats.add(b.seat_number);
+      normalized.push(b);
+      if (targetEmployeeId && b.employee_id === targetEmployeeId) {
+        resolvedTargetSeat = b.seat_number;
+      }
+    } else {
+      overflow.push(b);
+    }
+  }
+
+  // Pass 2: Map overflow to available seats (1..maxSeats)
+  let nextAvail = 1;
+  for (const b of overflow) {
+    while (nextAvail <= maxSeats && occupiedSeats.has(nextAvail)) {
+      nextAvail++;
+    }
+    const assignedSeat = nextAvail <= maxSeats ? nextAvail : b.seat_number;
+    occupiedSeats.add(assignedSeat);
+    normalized.push({
+      ...b,
+      seat_number: assignedSeat,
+    });
+    if (targetEmployeeId && b.employee_id === targetEmployeeId) {
+      resolvedTargetSeat = assignedSeat;
+    }
+    nextAvail++;
+  }
+
+  return { normalizedBookings: normalized, targetSeat: resolvedTargetSeat };
+}
+

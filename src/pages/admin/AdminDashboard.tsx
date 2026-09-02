@@ -2,10 +2,11 @@
 // Admin Dashboard Page
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
+
 import {
   Users,
   Bus,
@@ -15,7 +16,12 @@ import {
   ChevronRight,
   RefreshCw,
   Bell,
+  Check,
+  Moon,
+  CheckCircle,
 } from 'lucide-react';
+
+
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
@@ -23,6 +29,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { SeatMap } from '../../components/booking/SeatMap';
+import { TomSelect, type TomSelectOption } from '../../components/ui/TomSelect';
 import { useAdminBookings } from '../../hooks/useBooking';
 import { useRoutes } from '../../hooks/useRoutes';
 import { useRealtimeBookings } from '../../hooks/useRealtimeBookings';
@@ -32,21 +39,114 @@ import {
   getVehicleType,
   getMaxSeats,
   isBookingClosed,
+  normalizeUnitBookings,
 } from '../../lib/vehicleLogic';
+
 import { getVehicleIcon } from '../../lib/utils';
-import type { Route, VehicleType } from '../../lib/types';
+import type { Route, VehicleType, Booking } from '../../lib/types';
+
+
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(getTomorrowDate());
+
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<{ route: Route; vehicleType: VehicleType } | null>(null);
   const [adminSelectedUnit, setAdminSelectedUnit] = useState<number>(1);
   const [routeOverrides, setRouteOverrides] = useState<Record<string, boolean>>({}); // route_id -> is_billable
   const [routeInvoiceVehicles, setRouteInvoiceVehicles] = useState<Record<string, string>>({}); // route_id -> override_vehicle_type
+  const [dailyRouteVehicles, setDailyRouteVehicles] = useState<Record<string, { vehicleType: string; unitCount: number }>>({}); // route_id -> { vehicleType, unitCount } for selectedDate
   const [routeDrivers, setRouteDrivers] = useState<Record<string, string>>({}); // route_id -> driver_employee_id
+
+  const [returnRouteDrivers, setReturnRouteDrivers] = useState<Record<string, string>>({}); // route_id_unit -> return_driver_employee_id
+  const [showReturnDriverOverride, setShowReturnDriverOverride] = useState<Record<string, boolean>>({}); // route_id -> boolean
+  const [routeApprovalStatus, setRouteApprovalStatus] = useState<Record<string, 'pending' | 'approved' | 'rejected'>>({}); // route_id -> vendor_approval_status
   const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null; department?: string; driver_type?: 'internal' | 'vendor' | null }[]>([]);
-  const { data: routes, isLoading: routesLoading, refetch: refetchRoutes } = useRoutes();
+  const [selectedSeatForAdmin, setSelectedSeatForAdmin] = useState<{ seatNumber: number; booking?: Booking } | null>(null);
+
+
+  // Modal State for Registering New Driver directly from TomSelect
+  const [newDriverModal, setNewDriverModal] = useState<{
+    isOpen: boolean;
+    initialName: string;
+    routeId?: string;
+    unitNumber?: number;
+  } | null>(null);
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newDriverPhone, setNewDriverPhone] = useState('');
+  const [newDriverType, setNewDriverType] = useState<'internal' | 'vendor'>('vendor');
+  const [isSavingNewDriver, setIsSavingNewDriver] = useState(false);
+
+  const handleOpenAddDriver = (
+    typedName: string,
+    routeId?: string,
+    unitNumber: number = 1
+  ) => {
+    setNewDriverName(typedName);
+    setNewDriverPhone('');
+    setNewDriverType('vendor');
+    setNewDriverModal({
+      isOpen: true,
+      initialName: typedName,
+      routeId,
+      unitNumber,
+    });
+  };
+
+  const handleSaveNewDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDriverName.trim()) {
+      toast.error('Nama supir wajib diisi');
+      return;
+    }
+    if (!newDriverPhone.trim()) {
+      toast.error('Nomor WhatsApp / HP wajib diisi');
+      return;
+    }
+
+    setIsSavingNewDriver(true);
+    try {
+      const generatedNik = `DRV-${Date.now().toString().slice(-6)}`;
+      const { data: newDriver, error } = await supabase
+        .from('employees')
+        .insert({
+          nik: generatedNik,
+          name: newDriverName.trim(),
+          phone: newDriverPhone.trim(),
+          department: newDriverType === 'internal' ? 'Driver Internal' : 'Vendor Driver',
+          role: 'driver',
+          driver_type: newDriverType,
+        })
+        .select('id, name, phone, department, driver_type')
+        .single();
+
+      if (error) throw error;
+
+      toast.success(`Supir ${newDriverName.trim()} berhasil didaftarkan! 🎉`);
+
+      // Refresh driver list
+      await fetchDrivers();
+
+      // Automatically assign new driver to the target route/unit
+      if (newDriverModal?.routeId) {
+        await handleAssignDriverToRoute(
+          newDriverModal.routeId,
+          newDriver.id,
+          newDriverModal.unitNumber || 1
+        );
+      }
+
+      setNewDriverModal(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mendaftarkan supir baru');
+    } finally {
+      setIsSavingNewDriver(false);
+    }
+  };
+
+  const { data: routes, isLoading: routesLoading } = useRoutes();
+
+
   const { data: bookings = [], isLoading: bookingsLoading, refetch } = useAdminBookings(selectedDate);
 
   useRealtimeBookings(null, selectedDate);
@@ -104,19 +204,29 @@ export default function AdminDashboard() {
   };
 
 
-  // Group bookings by route
+  // Group bookings by route (Uses daily override for selected date if set, else Auto recommendation)
   const routeStats = routes?.map((route) => {
     const routeBookings = bookings.filter(
       (b) => b.route_id === route.id && b.status === 'confirmed'
     );
     const confirmedCount = routeBookings.length;
-    const vehicleType = getVehicleType(confirmedCount, route.manual_vehicle_type);
+
+    // Daily override for selected date (strictly defaults to 'Auto' & 1 unit for next days/un-overridden dates)
+    const dailySetting = dailyRouteVehicles[route.id];
+    const manualType = dailySetting ? dailySetting.vehicleType : 'Auto';
+    const unitCount = dailySetting ? dailySetting.unitCount : 1;
+
+
+    const vehicleType = getVehicleType(confirmedCount, manualType);
     const baseSeats = getMaxSeats(vehicleType);
-    const unitCount = route.unit_count || 1;
     const maxSeats = baseSeats * unitCount;
 
     return {
-      route,
+      route: {
+        ...route,
+        manual_vehicle_type: manualType,
+        unit_count: unitCount,
+      },
       confirmedCount,
       vehicleType,
       maxSeats,
@@ -126,44 +236,74 @@ export default function AdminDashboard() {
 
   const handleUpdateManualVehicle = async (routeId: string, vehicleSetting: string, unitCount: number = 1) => {
     try {
+      const isAuto = !vehicleSetting || vehicleSetting === 'Auto';
       const { error } = await supabase
-        .from('routes')
-        .update({
-          manual_vehicle_type: vehicleSetting,
-          unit_count: unitCount
-        })
-        .eq('id', routeId);
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: selectedDate,
+          route_id: routeId,
+          daily_vehicle_type: isAuto ? 'Auto' : vehicleSetting,
+          daily_unit_count: isAuto ? 1 : unitCount,
+          override_vehicle_type: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
 
       if (error) throw error;
-      toast.success('Pengaturan armada rute berhasil diperbarui! 🚌');
-      await queryClient.invalidateQueries({ queryKey: ['routes'] });
-      await refetchRoutes();
+
+      toast.success(
+        isAuto
+          ? `Armada tanggal ${formatDateIndonesian(selectedDate)} kembali ke ⚡ Otomatis (Rekomendasi Sistem)! 🚌`
+          : `Armada tanggal ${formatDateIndonesian(selectedDate)} diatur menjadi ${vehicleSetting} (${unitCount} Unit)! 🚗`
+      );
+      fetchDateOverridesAndDrivers();
       refetch();
     } catch (err: any) {
       toast.error(err.message || 'Gagal mengubah setting armada.');
     }
   };
 
+
+
+  const fetchDrivers = useCallback(async () => {
+    try {
+      const { data: dList, error } = await supabase
+        .from('employees')
+        .select('id, name, phone, department, driver_type')
+        .eq('role', 'driver')
+        .order('name', { ascending: true });
+
+      if (!error && dList) {
+        setAvailableDrivers(dList as any[]);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch drivers:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDrivers();
+  }, [fetchDrivers]);
+
   // Fetch overrides and drivers for selected date
   const fetchDateOverridesAndDrivers = async () => {
-    // 1. Fetch available drivers
-    const { data: dList } = await supabase
-      .from('employees')
-      .select('id, name, phone, department, driver_type')
-      .eq('role', 'driver')
-      .order('name', { ascending: true });
-
-    if (dList) setAvailableDrivers(dList as any[]);
+    // Refresh available drivers
+    fetchDrivers();
 
     // 2. Fetch overrides & assigned drivers & override vehicle types
+
     const { data } = await supabase
       .from('invoice_daily_overrides')
-      .select('route_id, is_billable, assigned_driver_id, override_vehicle_type, assigned_driver_id_unit2, assigned_driver_id_unit3, driver_assignments, is_billable_unit2, is_billable_unit3, unit_sources')
+      .select('route_id, is_billable, assigned_driver_id, override_vehicle_type, assigned_driver_id_unit2, assigned_driver_id_unit3, driver_assignments, return_driver_assignments, has_different_return_driver, is_billable_unit2, is_billable_unit3, unit_sources, vendor_approval_status, daily_vehicle_type, daily_unit_count')
       .eq('departure_date', selectedDate);
 
     const billableMap: Record<string, boolean> = {};
     const driverMap: Record<string, string> = {};
+    const returnDriverMap: Record<string, string> = {};
+    const returnOverrideToggleMap: Record<string, boolean> = {};
     const invoiceVehicleMap: Record<string, string> = {};
+    const dailyVehiclesMap: Record<string, { vehicleType: string; unitCount: number }> = {};
+    const approvalMap: Record<string, 'pending' | 'approved' | 'rejected'> = {};
+
     if (data) {
       data.forEach((item: any) => {
         billableMap[item.route_id] = item.is_billable;
@@ -195,15 +335,65 @@ export default function AdminDashboard() {
             driverMap[`${item.route_id}_${uKey}`] = dId as string;
           });
         }
+
+        if (item.has_different_return_driver) {
+          returnOverrideToggleMap[item.route_id] = true;
+        }
+        if (item.return_driver_assignments && typeof item.return_driver_assignments === 'object') {
+          Object.entries(item.return_driver_assignments).forEach(([uKey, dId]) => {
+            returnDriverMap[`${item.route_id}_${uKey}`] = dId as string;
+          });
+        }
+
+        if (item.daily_vehicle_type) {
+          dailyVehiclesMap[item.route_id] = {
+            vehicleType: item.daily_vehicle_type,
+            unitCount: item.daily_unit_count || 1,
+          };
+        }
+
         if (item.override_vehicle_type) {
           invoiceVehicleMap[item.route_id] = item.override_vehicle_type;
+        }
+        if (item.vendor_approval_status) {
+          approvalMap[item.route_id] = item.vendor_approval_status;
         }
       });
     }
     setRouteOverrides(billableMap);
     setRouteDrivers(driverMap);
+    setReturnRouteDrivers(returnDriverMap);
+    setShowReturnDriverOverride(returnOverrideToggleMap);
+    setDailyRouteVehicles(dailyVehiclesMap);
     setRouteInvoiceVehicles(invoiceVehicleMap);
+    setRouteApprovalStatus(approvalMap);
   };
+
+
+
+  const driverOptions: TomSelectOption[] = useMemo(() => {
+    return availableDrivers.map((d) => {
+      const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
+      const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
+      return {
+        value: d.id,
+        label: `👨‍✈️ ${d.name} ${typeTag}`,
+        sublabel: d.phone ? `No. Telp / WA: ${d.phone}` : undefined,
+      };
+    });
+  }, [availableDrivers]);
+
+  const vehicleConfigOptions: TomSelectOption[] = useMemo(() => [
+    { value: 'Auto_1', label: '⚡ Otomatis (Rekomendasi Sistem)' },
+    { value: 'Avanza_1', label: '🚗 1x Avanza (Max 6 Kursi)' },
+    { value: 'Avanza_2', label: '🚗🚗 2x Avanza (2 Unit Split - Max 12 Kursi)' },
+    { value: 'Avanza_3', label: '🚗🚗🚗 3x Avanza (3 Unit Split - Max 18 Kursi)' },
+    { value: 'Elf Short_1', label: '🚌 1x Elf Short (Max 14 Kursi)' },
+    { value: 'Elf Short_2', label: '🚌🚌 2x Elf Short (2 Unit Split - Max 28 Kursi)' },
+    { value: 'Elf Long_1', label: '🚐 1x Elf Long (Max 16 Kursi)' },
+  ], []);
+
+
 
   useEffect(() => {
     fetchDateOverridesAndDrivers();
@@ -290,6 +480,66 @@ export default function AdminDashboard() {
       toast.error(err.message || 'Gagal menugaskan supir');
     }
   };
+
+  const handleAssignReturnDriverToRoute = async (routeId: string, driverId: string, unitNumber: number = 1) => {
+    const unitKey = `${routeId}_${unitNumber}`;
+    const newMap = { ...returnRouteDrivers, [unitKey]: driverId };
+    if (unitNumber === 1) newMap[routeId] = driverId;
+    setReturnRouteDrivers(newMap);
+
+    try {
+      const currentUnit1 = newMap[`${routeId}_1`] || newMap[routeId] || null;
+      const currentUnit2 = newMap[`${routeId}_2`] || null;
+      const currentUnit3 = newMap[`${routeId}_3`] || null;
+
+      const returnDriverAssignments = {
+        '1': currentUnit1,
+        '2': currentUnit2,
+        '3': currentUnit3,
+      };
+
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: selectedDate,
+          route_id: routeId,
+          has_different_return_driver: true,
+          return_driver_assignments: returnDriverAssignments,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
+      if (error) throw error;
+      toast.success(`Supir Pulang Sore Unit ${unitNumber} berhasil diperbarui! 🌆`);
+      fetchDateOverridesAndDrivers();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengatur supir pulang');
+    }
+  };
+
+  const handleToggleOvertimeFromMap = async (booking: Booking) => {
+    const newStatus = !(booking as any).is_overtime_no_return;
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ is_overtime_no_return: newStatus })
+        .eq('id', booking.id);
+      if (error) throw error;
+      toast.success(
+        newStatus
+          ? `${(booking as any).employee?.name || 'Penumpang'} ditandai LEMBUR (Tidak Pulang Reguler 16:30) 🌙`
+          : `${(booking as any).employee?.name || 'Penumpang'} diset kembali IKUT PULANG PP 🚗`
+      );
+      refetch();
+      setSelectedSeatForAdmin((prev) =>
+        prev && prev.booking?.id === booking.id
+          ? { ...prev, booking: { ...prev.booking, is_overtime_no_return: newStatus } as any }
+          : prev
+      );
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengubah status lembur penumpang');
+    }
+  };
+
 
   const handleSetRouteInvoiceVehicle = async (routeId: string, vehicleType: string) => {
     try {
@@ -561,44 +811,57 @@ export default function AdminDashboard() {
                       {getVehicleIcon(stat.vehicleType)}
                     </div>
                     <div>
-                      <h3 className="font-bold text-slate-900 text-base font-[family-name:var(--font-display)]">
+                      <h3 className="font-bold text-slate-900 text-base font-[family-name:var(--font-display)] flex items-center gap-2">
                         {stat.route.route_name}
+                        {/* Vendor Approval Badge (Read-only) */}
+                        {(() => {
+                          const status = routeApprovalStatus[stat.route.id];
+                          if (status === 'approved') return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              ✅ Vendor Setuju
+                            </span>
+                          );
+                          if (status === 'rejected') return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                              ❌ Vendor Tolak
+                            </span>
+                          );
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              ⏳ Menunggu Vendor
+                            </span>
+                          );
+                        })()}
                       </h3>
-                      <div className="mt-1 flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-slate-600 font-medium">Konfigurasi Armada:</span>
-                        <select
-                          value={
-                            stat.route.manual_vehicle_type
-                              ? `${stat.route.manual_vehicle_type}_${stat.route.unit_count || 1}`
-                              : 'Auto_1'
-                          }
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === 'Auto_1') {
-                              handleUpdateManualVehicle(stat.route.id, 'Auto', 1);
-                            } else {
-                              const [vType, uCount] = val.split('_');
-                              handleUpdateManualVehicle(stat.route.id, vType, Number(uCount));
+                      {/* Configuration Controls Bar */}
+                      <div className="mt-3 flex flex-wrap items-end gap-3">
+                        {/* 1. Konfigurasi Armada */}
+                        <div className="flex-1 min-w-[220px] max-w-sm">
+                          <span className="text-xs text-slate-600 font-medium block mb-1">Konfigurasi Armada:</span>
+                          <TomSelect
+                            value={
+                              stat.route.manual_vehicle_type
+                                ? `${stat.route.manual_vehicle_type}_${stat.route.unit_count || 1}`
+                                : 'Auto_1'
                             }
-                          }}
-                          className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
-                        >
-                          <option value="Auto_1">⚡ Otomatis (Sistem Rekomendasi: {stat.vehicleType})</option>
-                          <option value="Avanza_1">🚗 1x Avanza (Max 6 Kursi)</option>
-                          <option value="Avanza_2">🚗🚗 2x Avanza (2 Unit Split - Max 12 Kursi)</option>
-                          <option value="Avanza_3">🚗🚗🚗 3x Avanza (3 Unit Split - Max 18 Kursi)</option>
-                          <option value="Elf Short_1">🚌 1x Elf Short (Max 14 Kursi)</option>
-                          <option value="Elf Short_2">🚌🚌 2x Elf Short (2 Unit Split - Max 28 Kursi)</option>
-                          <option value="Elf Long_1">🚐 1x Elf Long (Max 16 Kursi)</option>
-                        </select>
-                      </div>
+                            onChange={(val) => {
+                              if (!val || val === 'Auto_1') {
+                                handleUpdateManualVehicle(stat.route.id, 'Auto', 1);
+                              } else {
+                                const [vType, uCount] = val.split('_');
+                                handleUpdateManualVehicle(stat.route.id, vType, Number(uCount));
+                              }
+                            }}
+                            options={vehicleConfigOptions}
+                            placeholder="-- Pilih Konfigurasi Armada --"
+                          />
+                        </div>
 
-                      {/* Source Vendor vs Internal Driver Selector */}
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                        {/* If Multi-Unit Enabled (e.g. 2x Avanza / 3x Avanza), show a driver selector per unit */}
+
+                        {/* 2. Supir / Driver (Berangkat) */}
                         {(stat.route.unit_count || 1) > 1 ? (
                           <div className="flex flex-wrap items-center gap-2 w-full p-2 bg-slate-50 border border-slate-200 rounded-xl my-1">
-                            <span className="text-xs text-slate-700 font-bold w-full">👨‍✈️ Penugasan Supir per Unit Mobil:</span>
+                            <span className="text-xs text-slate-700 font-bold w-full">👨‍✈️ Penugasan Supir Berangkat per Unit:</span>
                             {[...Array(stat.route.unit_count || 1)].map((_, uIdx) => {
                               const uNum = uIdx + 1;
                               const isKB = stat.route.route_name.toLowerCase().includes('karawang barat');
@@ -613,60 +876,102 @@ export default function AdminDashboard() {
                               const currentVal = routeDrivers[`${stat.route.id}_${uNum}`] || (uNum === 1 ? routeDrivers[stat.route.id] : '') || '';
 
                               return (
-                                <div key={uNum} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                                  <span className="text-[11px] text-slate-600 font-bold whitespace-nowrap">{unitLabel}:</span>
-                                  <select
+                                <div key={uNum} className="flex-1 min-w-[200px] bg-white p-2 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                                  <span className="text-[11px] text-slate-700 font-bold block">{unitLabel}:</span>
+                                  <TomSelect
                                     value={currentVal}
-                                    onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value, uNum)}
-                                    className="px-2 py-0.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 font-semibold focus:ring-2 focus:ring-primary-500 cursor-pointer"
-                                  >
-                                    <option value="">-- Pilih Supir --</option>
-                                    {availableDrivers.map((d) => {
-                                      // Check if this driver is assigned to another unit or route on selectedDate
-                                      const isAssignedElsewhere = Object.entries(routeDrivers).some(
-                                        ([key, drvId]) => drvId === d.id && key !== `${stat.route.id}_${uNum}` && !(uNum === 1 && key === stat.route.id)
-                                      );
-                                      const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
-                                      const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
-
-                                      return (
-                                        <option key={d.id} value={d.id} disabled={isAssignedElsewhere}>
-                                          👨‍✈️ {d.name} {typeTag} {d.phone ? `(${d.phone})` : ''} {isAssignedElsewhere ? '🚫 [Sudah Bertugas]' : ''}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
+                                    onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, uNum)}
+                                    options={driverOptions}
+                                    placeholder="-- Pilih Supir Rute Ini --"
+                                    onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, uNum)}
+                                    createLabel="Daftarkan Supir Baru"
+                                  />
                                 </div>
                               );
                             })}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-600 font-medium">Supir / Driver:</span>
-                            <select
+                          <div className="flex-1 min-w-[220px] max-w-sm">
+                            <span className="text-xs text-slate-600 font-medium block mb-1">Supir / Driver (Berangkat):</span>
+                            <TomSelect
                               value={routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id] || ''}
-                              onChange={(e) => handleAssignDriverToRoute(stat.route.id, e.target.value, 1)}
-                              className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
-                            >
-                              <option value="">-- Pilih Supir Rute --</option>
-                              {availableDrivers.map((d) => {
-                                const isAssignedElsewhere = Object.entries(routeDrivers).some(
-                                  ([key, drvId]) => drvId === d.id && key !== `${stat.route.id}_1` && key !== stat.route.id
-                                );
-                                const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
-                                const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
-
-                                return (
-                                  <option key={d.id} value={d.id} disabled={isAssignedElsewhere}>
-                                    👨‍✈️ {d.name} {typeTag} {d.phone ? `(${d.phone})` : ''} {isAssignedElsewhere ? '🚫 [Sudah Bertugas]' : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                              onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, 1)}
+                              options={driverOptions}
+                              placeholder="-- Pilih Supir Rute Ini --"
+                              onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, 1)}
+                              createLabel="Daftarkan Supir Baru"
+                            />
                           </div>
                         )}
 
-                        {/* Source Vendor vs Internal Driver Selector */}
+                        {/* Toggle Supir Pulang Sore Berbeda (Shift 16:30) */}
+                        <div className="w-full pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setShowReturnDriverOverride((prev) => ({ ...prev, [stat.route.id]: !prev[stat.route.id] }))}
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer py-0.5"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>
+                              {showReturnDriverOverride[stat.route.id]
+                                ? '▾ Sembunyikan Pengaturan Supir Pulang Sore'
+                                : '▸ 🌙 Atur Supir Pulang Sore Berbeda (Shift 16:30)'}
+                            </span>
+                          </button>
+
+                          {showReturnDriverOverride[stat.route.id] && (
+                            <div className="mt-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-blue-900 flex items-center gap-1">
+                                  <Moon className="w-3.5 h-3.5 text-blue-600" />
+                                  Supir Pulang Sore (16:30):
+                                </span>
+                                <span className="text-[10px] text-blue-600 font-medium">
+                                  (Default: Sama dengan Supir Berangkat)
+                                </span>
+                              </div>
+
+                              {(stat.route.unit_count || 1) > 1 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {[...Array(stat.route.unit_count || 1)].map((_, uIdx) => {
+                                    const uNum = uIdx + 1;
+                                    const isKB = stat.route.route_name.toLowerCase().includes('karawang barat');
+                                    const unitLabel = isKB ? (uNum === 1 ? 'Unit 1 (Tj. Pura)' : 'Unit 2 (Galuh Mas)') : `Unit ${uNum}`;
+                                    const currentVal = returnRouteDrivers[`${stat.route.id}_${uNum}`] || returnRouteDrivers[stat.route.id] || '';
+
+                                    return (
+                                      <div key={uNum} className="flex-1 min-w-[200px] bg-white p-2 rounded-lg border border-blue-200 shadow-2xs">
+                                        <span className="text-[11px] text-slate-700 font-bold block mb-1">{unitLabel} (Sore):</span>
+                                        <TomSelect
+                                          value={currentVal}
+                                          onChange={(val) => handleAssignReturnDriverToRoute(stat.route.id, val, uNum)}
+                                          options={driverOptions}
+                                          placeholder="-- Ikuti Supir Berangkat --"
+                                          onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, uNum)}
+                                          createLabel="Daftarkan Supir Baru"
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="max-w-sm">
+                                  <TomSelect
+                                    value={returnRouteDrivers[`${stat.route.id}_1`] || returnRouteDrivers[stat.route.id] || ''}
+                                    onChange={(val) => handleAssignReturnDriverToRoute(stat.route.id, val, 1)}
+                                    options={driverOptions}
+                                    placeholder="-- Ikuti Supir Berangkat --"
+                                    onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, 1)}
+                                    createLabel="Daftarkan Supir Baru"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+
+                        {/* 3. Sumber Armada */}
                         {(stat.route.unit_count || 1) > 1 ? (
                           <div className="flex flex-wrap items-center gap-2 w-full p-2 bg-slate-50 border border-slate-200 rounded-xl my-1">
                             <span className="text-xs text-slate-700 font-bold w-full">🏢 Sumber Armada per Unit Mobil:</span>
@@ -684,14 +989,14 @@ export default function AdminDashboard() {
                               const isBillable = routeOverrides[`${stat.route.id}_${uNum}`] ?? (uNum === 1 ? routeOverrides[stat.route.id] : true) ?? true;
 
                               return (
-                                <div key={uNum} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                <div key={uNum} className="flex items-center gap-1.5 bg-white px-2 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
                                   <span className="text-[11px] text-slate-600 font-bold whitespace-nowrap">{unitLabel}:</span>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleUnitBillable(stat.route.id, uNum, isBillable)}
-                                    className={`px-2.5 py-0.5 text-xs rounded-md font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                    className={`px-2.5 py-1 text-xs rounded-md font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                      : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
                                       }`}
                                   >
                                     {isBillable ? '💳 Sewa Vendor (Invoice)' : '🏢 Driver Sendiri (Rp 0)'}
@@ -701,17 +1006,17 @@ export default function AdminDashboard() {
                             })}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-600 font-medium">Sumber Armada:</span>
+                          <div className="flex flex-col justify-end">
+                            <span className="text-xs text-slate-600 font-medium block mb-1">Sumber Armada:</span>
                             {(() => {
                               const isBillable = routeOverrides[`${stat.route.id}_1`] ?? routeOverrides[stat.route.id] ?? true;
                               return (
                                 <button
                                   type="button"
                                   onClick={() => handleToggleRouteBillable(stat.route.id, isBillable)}
-                                  className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                      : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                  className={`px-3 py-2 text-xs rounded-xl font-bold transition-all border cursor-pointer flex items-center gap-1 ${isBillable
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
                                     }`}
                                 >
                                   {isBillable ? '💳 Sewa Vendor (Masuk Invoice)' : '🏢 Driver Sendiri / PT (Rp 0)'}
@@ -721,45 +1026,79 @@ export default function AdminDashboard() {
                           </div>
                         )}
 
-                        {/* Invoice Billed Vehicle Selector */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-slate-600 font-medium">Armada Invoice Vendor:</span>
-                          <select
-                            value={routeInvoiceVehicles[stat.route.id] || ''}
-                            onChange={(e) => handleSetRouteInvoiceVehicle(stat.route.id, e.target.value)}
-                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-primary-500 cursor-pointer shadow-xs"
-                          >
-                            <option value="">⚡ Otomatis ({stat.vehicleType})</option>
-                            <option value="Avanza">🚗 Avanza (Tagihan Avanza)</option>
-                            <option value="Elf Short">🚌 Elf Short (Tagihan Elf Short)</option>
-                            <option value="Elf Long">🚐 Elf Long (Tagihan Elf Long)</option>
-                          </select>
-                        </div>
+                        {/* 4. Armada Invoice Vendor (Hanya tampil jika sewa vendor / billable) */}
+                        {(() => {
+                          const isMulti = (stat.route.unit_count || 1) > 1;
+                          const isBillable = isMulti
+                            ? [...Array(stat.route.unit_count || 1)].some((_, uIdx) => {
+                              const u = uIdx + 1;
+                              return routeOverrides[`${stat.route.id}_${u}`] ?? (u === 1 ? routeOverrides[stat.route.id] : true) ?? true;
+                            })
+                            : (routeOverrides[`${stat.route.id}_1`] ?? routeOverrides[stat.route.id] ?? true);
 
-                        {/* Special Split Zonasi Button for Karawang Barat when 2 Avanza or > 6 passengers */}
-                        {stat.route.route_name.toLowerCase().includes('karawang barat') && (
-                          <div className="w-full pt-1 flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSplitKarawangBaratNow(stat.route.id)}
-                              disabled={isSplitting}
-                              icon={<RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSplitting ? 'animate-spin' : ''}`} />}
-                              className="text-xs py-1 px-2.5 bg-blue-50/70 hover:bg-blue-100/70 border-blue-200 text-blue-800 font-bold"
-                              title="Otomatis bagi penumpang yang sudah booking ke Unit 1 (Tanjung Pura) & Unit 2 (Galuh Mas) sesuai halte"
-                            >
-                              {isSplitting ? 'Memproses...' : '⚡ Split Zonasi Penumpang (2 Avanza)'}
-                            </Button>
-                            <span className="text-[11px] text-slate-500">
-                              (Pisahkan {stat.confirmedCount} penumpang yang sudah pesan ke Unit 1 & Unit 2)
-                            </span>
-                          </div>
-                        )}
+                          if (!isBillable) return null;
+
+                          const currentInvoiceVehicle = routeInvoiceVehicles[stat.route.id] || stat.vehicleType;
+
+                          return (
+                            <div className="flex-1 min-w-[220px] max-w-sm">
+                              <span className="text-xs text-slate-600 font-medium block mb-1">Armada Invoice Vendor:</span>
+                              <TomSelect
+                                value={currentInvoiceVehicle}
+                                onChange={(val) => handleSetRouteInvoiceVehicle(stat.route.id, val)}
+                                options={[
+                                  { value: 'Avanza', label: '🚗 Avanza (Tagihan Avanza)' },
+                                  { value: 'Elf Short', label: '🚌 Elf Short (Tagihan Elf Short)' },
+                                  { value: 'Elf Long', label: '🚐 Elf Long (Tagihan Elf Long)' },
+                                ]}
+                                placeholder="-- Pilih Armada Invoice --"
+                              />
+                            </div>
+
+                          );
+                        })()}
                       </div>
+
+
+
+                      {/* Special Split Zonasi Banner for Karawang Barat */}
+                      {stat.route.route_name.toLowerCase().includes('karawang barat') && (
+                        <div className="w-full mt-3 p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-slate-50 border border-blue-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                              <RefreshCw className={`w-4 h-4 ${isSplitting ? 'animate-spin' : ''}`} />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>Split Zonasi (2 Avanza)</span>
+                                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-md">
+                                  {stat.confirmedCount} Penumpang
+                                </span>
+                              </h4>
+                              <p className="text-[11px] text-slate-600 mt-0.5">
+                                Otomatis bagi penumpang ke <span className="font-semibold text-slate-800">Unit 1 (Tj. Pura)</span> & <span className="font-semibold text-slate-800">Unit 2 (Galuh Mas)</span> sesuai titik halte.
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSplitKarawangBaratNow(stat.route.id)}
+                            disabled={isSplitting || stat.confirmedCount === 0}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed shrink-0"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isSplitting ? 'animate-spin' : ''}`} />
+                            <span>{isSplitting ? 'Memproses...' : '⚡ Jalankan Auto-Split'}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
+
                   <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+
+
                     <div className="text-left sm:text-right">
                       <p className="text-xs text-slate-500">Terisi / Kapasitas</p>
                       <p className="text-sm font-bold text-slate-900">
@@ -830,8 +1169,8 @@ export default function AdminDashboard() {
                           type="button"
                           onClick={() => setAdminSelectedUnit(uNum)}
                           className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${isSel
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                             }`}
                         >
                           {getUnitLabel(uNum)} ({unitBookingsCount} Penumpang)
@@ -843,36 +1182,115 @@ export default function AdminDashboard() {
               )}
 
               {(() => {
-                const unitBookings = bookings.filter(
-                  (b) => b.route_id === selectedRouteForMap.route.id &&
-                    (b.unit_number || 1) === adminSelectedUnit &&
-                    b.status === 'confirmed'
-                );
-                // Re-index seat numbers for display (1,2,3...) to handle bookings
-                // that were made when route was Elf Short (seat numbers > 6)
-                const remappedBookings = unitBookings.map((b, idx) => ({
-                  ...b,
-                  seat_number: idx + 1,
-                }));
-                const displayVehicle = (selectedRouteForMap.route.unit_count || 1) > 1
+                const isMulti = (selectedRouteForMap.route.unit_count || 1) > 1;
+                const rawUnitBookings = isMulti
+                  ? bookings.filter(
+                      (b) => b.route_id === selectedRouteForMap.route.id &&
+                        (b.unit_number || 1) === adminSelectedUnit &&
+                        b.status === 'confirmed'
+                    )
+                  : bookings.filter(
+                      (b) => b.route_id === selectedRouteForMap.route.id && b.status === 'confirmed'
+                    );
+
+                const { normalizedBookings } = isMulti
+                  ? normalizeUnitBookings(rawUnitBookings, 6)
+                  : { normalizedBookings: rawUnitBookings };
+
+                const displayVehicle = isMulti
                   ? ((selectedRouteForMap.route.manual_vehicle_type as VehicleType) || 'Avanza')
                   : selectedRouteForMap.vehicleType;
+
                 return (
                   <SeatMap
                     vehicleType={displayVehicle}
-                    bookings={remappedBookings}
-                    selectedSeat={null}
-                    onSeatSelect={() => { }}
+                    bookings={normalizedBookings}
+                    selectedSeat={selectedSeatForAdmin?.seatNumber || null}
+                    allowBookedClick={true}
+                    onSeatSelect={(seatNumber) => {
+                      const foundBooking = normalizedBookings.find((b) => b.seat_number === seatNumber);
+                      setSelectedSeatForAdmin({ seatNumber, booking: foundBooking });
+                    }}
+                    onSeatClickWithBooking={(seatNumber, bkg) => {
+                      const foundBooking = bkg || normalizedBookings.find((b) => b.seat_number === seatNumber);
+                      setSelectedSeatForAdmin({ seatNumber, booking: foundBooking });
+                    }}
                   />
                 );
               })()}
+
+
+              {/* Selected Seat Passenger Info & Overtime Toggle Panel */}
+              {selectedSeatForAdmin?.booking ? (
+                <div className="mt-3 p-3.5 bg-purple-50/90 border border-purple-200 rounded-2xl space-y-2.5 shadow-2xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 flex items-center gap-1">
+                        <Users className="w-3 h-3" /> Kursi Terpilih No. {selectedSeatForAdmin.seatNumber}
+                      </span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-0.5">
+                        {(selectedSeatForAdmin.booking as any).employee?.name || 'Penumpang'}
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        NIK: {(selectedSeatForAdmin.booking as any).employee?.nik || '-'} • {(selectedSeatForAdmin.booking as any).employee?.department || '-'}
+                      </p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        📍 Halte: {(selectedSeatForAdmin.booking as any).pickup_point || '-'}
+                      </p>
+                    </div>
+
+                    <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold border shrink-0 ${
+                      (selectedSeatForAdmin.booking as any).is_overtime_no_return
+                        ? 'bg-purple-200 text-purple-900 border-purple-300 flex items-center gap-1 shadow-2xs'
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-300 flex items-center gap-1'
+                    }`}>
+                      {(selectedSeatForAdmin.booking as any).is_overtime_no_return ? (
+                        <>
+                          <Moon className="w-3 h-3" /> Lembur (Off Pulang)
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3 h-3" /> Ikut Pulang Reguler
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleToggleOvertimeFromMap(selectedSeatForAdmin.booking!)}
+                    className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                      (selectedSeatForAdmin.booking as any).is_overtime_no_return
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700'
+                    }`}
+                  >
+                    {(selectedSeatForAdmin.booking as any).is_overtime_no_return ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Kembalikan ke Ikut Pulang Reguler (16:30)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Moon className="w-4 h-4" />
+                        <span>Tandai Lembur (Tidak Ikut Pulang Sore 16:30)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
+                  👆 <em>Klik pada salah satu kursi penumpang di denah untuk menandai status <strong>Lembur (Off Pulang Sore)</strong>.</em>
+                </div>
+              )}
+
               {/* Quick Passenger Reassign List in Modal for Multi-Unit */}
               {(selectedRouteForMap.route.unit_count || 1) > 1 && (
                 <div className="mt-4 pt-3 border-t border-slate-200">
                   <h4 className="text-xs font-bold text-slate-800 mb-2 flex items-center justify-between">
                     <span>👥 Pindahkan Penumpang antar Unit (Jika Over-capacity):</span>
                     <span className="text-[11px] font-normal text-slate-500">
-                      Unit 1: {bookings.filter(b => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === 1 && b.status === 'confirmed').length} org • 
+                      Unit 1: {bookings.filter(b => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === 1 && b.status === 'confirmed').length} org •
                       Unit 2: {bookings.filter(b => b.route_id === selectedRouteForMap.route.id && (b.unit_number || 1) === 2 && b.status === 'confirmed').length} org
                     </span>
                   </h4>
@@ -942,6 +1360,111 @@ export default function AdminDashboard() {
           </p>
         </div>
       </Dialog>
+
+      {/* Register New Driver Modal */}
+      {newDriverModal && (
+        <Dialog
+          isOpen={newDriverModal.isOpen}
+          onClose={() => setNewDriverModal(null)}
+          title="👨‍✈️ Pendaftaran Supir Baru"
+        >
+          <form onSubmit={handleSaveNewDriver} className="space-y-4 py-2">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <p className="text-xs text-blue-800">
+                Supir baru akan disimpan ke database dan langsung ditugaskan ke rute ini.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nama Lengkap Supir <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={newDriverName}
+                onChange={(e) => setNewDriverName(e.target.value)}
+                placeholder="Contoh: Pak Budi Santoso"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nomor WhatsApp / HP <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                required
+                value={newDriverPhone}
+                onChange={(e) => setNewDriverPhone(e.target.value)}
+                placeholder="Contoh: 081234567890"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Kategori Supir / Driver
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewDriverType('vendor')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                    newDriverType === 'vendor'
+                      ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  💳 Supir Sewa Vendor
+                  <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
+                    Masuk ke tagihan invoice vendor
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewDriverType('internal')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                    newDriverType === 'internal'
+                      ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  🏢 Supir Internal PT
+                  <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
+                    Armada / supir internal (Rp 0)
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setNewDriverModal(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingNewDriver}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+              >
+                {isSavingNewDriver ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>Simpan & Tugaskan</span>
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </div>
   );
 }
+

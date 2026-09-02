@@ -55,16 +55,19 @@ export function getStatusColor(status: BookingStatus): {
 /**
  * Returns an icon/emoji for a vehicle type.
  */
-export function getVehicleIcon(type: VehicleType): string {
+export function getVehicleIcon(type: VehicleType | string): string {
   switch (type) {
     case 'Avanza':
       return '🚗';
     case 'Elf Short':
-      return '🚐';
+      return '🚌';
     case 'Elf Long':
+      return '🚐';
+    default:
       return '🚌';
   }
 }
+
 
 /**
  * Truncates text to a maximum length with ellipsis.

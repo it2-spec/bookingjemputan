@@ -58,8 +58,9 @@ export function useBookingReminder() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const channel = supabase.channel('admin-notifications');
-    channel
+    // Global broadcast channel
+    const adminChannel = supabase.channel('admin-notifications');
+    adminChannel
       .on('broadcast', { event: 'admin-broadcast' }, (payload) => {
         const { title, message } = payload.payload || {};
         if (title && message) {
@@ -68,10 +69,25 @@ export function useBookingReminder() {
       })
       .subscribe();
 
+    // Targeted direct notification channel for this specific employee
+    let userChannel: any = null;
+    if (employee?.id) {
+      userChannel = supabase.channel(`user-notifications-${employee.id}`);
+      userChannel
+        .on('broadcast', { event: 'new-notification' }, (payload: any) => {
+          const { title, message } = payload.payload || {};
+          if (title && message) {
+            showLocalNotification(title, message);
+          }
+        })
+        .subscribe();
+    }
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(adminChannel);
+      if (userChannel) supabase.removeChannel(userChannel);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, employee?.id]);
 
   // 3. Scheduled automatic reminder check (runs every 5 seconds)
   useEffect(() => {

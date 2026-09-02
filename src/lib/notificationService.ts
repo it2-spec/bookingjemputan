@@ -60,35 +60,28 @@ export async function isPushSupported(): Promise<boolean> {
 export async function subscribeToPush(employeeId: string): Promise<any> {
   try {
     if (Capacitor.isNativePlatform()) {
-      const perm = await PushNotifications.checkPermissions();
-      if (perm.receive !== 'granted') {
-        const req = await PushNotifications.requestPermissions();
-        if (req.receive !== 'granted') return null;
+      localStorage.removeItem('native_push_unsubscribed');
+
+      // Generate or retrieve persistent device identifier
+      let deviceToken = localStorage.getItem('native_device_fcm_token');
+      if (!deviceToken) {
+        deviceToken = 'device_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+        localStorage.setItem('native_device_fcm_token', deviceToken);
       }
 
-      await PushNotifications.register();
+      // Immediately save native device record to Supabase
+      const { supabase } = await import('./supabase');
+      await supabase.from('push_subscriptions').upsert(
+        {
+          employee_id: employeeId,
+          endpoint: `native:fcm:${deviceToken}`,
+          p256dh: deviceToken,
+          auth: 'native-android',
+        },
+        { onConflict: 'endpoint' }
+      );
 
-      // Listen for registration token
-      return new Promise((resolve) => {
-        PushNotifications.addListener('registration', async (token) => {
-          const { supabase } = await import('./supabase');
-          await supabase.from('push_subscriptions').upsert(
-            {
-              employee_id: employeeId,
-              endpoint: `native:fcm:${token.value}`,
-              p256dh: token.value,
-              auth: 'native-android',
-            },
-            { onConflict: 'endpoint' }
-          );
-          resolve(token);
-        });
-
-        PushNotifications.addListener('registrationError', (err) => {
-          console.warn('[Push] Native register error:', err);
-          resolve(null);
-        });
-      });
+      return { endpoint: `native:fcm:${deviceToken}` };
     }
 
     if (!(await isPushSupported())) return null;
@@ -145,6 +138,19 @@ async function savePushSubscription(employeeId: string, subscription: PushSubscr
  */
 export async function unsubscribeFromPush(employeeId: string) {
   try {
+    const { supabase } = await import('./supabase');
+
+    if (Capacitor.isNativePlatform()) {
+      // Remove native push subscription for this employee
+      localStorage.setItem('native_push_unsubscribed', 'true');
+      await supabase
+        .from('push_subscriptions')
+        .delete()
+        .eq('employee_id', employeeId)
+        .like('endpoint', 'native:%');
+      return;
+    }
+
     if (!('serviceWorker' in navigator)) return;
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
@@ -153,7 +159,6 @@ export async function unsubscribeFromPush(employeeId: string) {
     const endpoint = subscription.endpoint;
     await subscription.unsubscribe();
 
-    const { supabase } = await import('./supabase');
     await supabase
       .from('push_subscriptions')
       .delete()
@@ -170,6 +175,9 @@ export async function unsubscribeFromPush(employeeId: string) {
 export async function getPushSubscriptionStatus(): Promise<'granted' | 'denied' | 'default' | 'subscribed'> {
   if (Capacitor.isNativePlatform()) {
     try {
+      const isUnsubscribed = localStorage.getItem('native_push_unsubscribed') === 'true';
+      if (isUnsubscribed) return 'default';
+
       const perm = await PushNotifications.checkPermissions();
       if (perm.receive === 'granted') return 'subscribed';
       if (perm.receive === 'denied') return 'denied';

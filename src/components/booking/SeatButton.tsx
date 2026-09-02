@@ -3,6 +3,7 @@
 // ============================================================
 
 import { motion } from 'motion/react';
+import { Moon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { SeatStatus } from '../../lib/types';
 
@@ -11,6 +12,7 @@ interface SeatButtonProps {
   status: SeatStatus;
   onClick?: () => void;
   bookedByName?: string;
+  isOvertime?: boolean;
   size?: 'sm' | 'md';
 }
 
@@ -18,7 +20,7 @@ const statusStyles: Record<SeatStatus, string> = {
   available:
     'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200 hover:border-emerald-400 cursor-pointer',
   booked:
-    'bg-red-100 border-red-300 text-red-800 cursor-not-allowed',
+    'bg-red-100 border-red-300 text-red-800 hover:opacity-90',
   selected:
     'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400 cursor-pointer',
   disabled:
@@ -30,25 +32,36 @@ export function SeatButton({
   status,
   onClick,
   bookedByName,
+  isOvertime = false,
   size = 'md',
 }: SeatButtonProps) {
-  const isClickable = status === 'available' || status === 'selected';
+  const isClickable = !!onClick;
 
   return (
     <div className="flex flex-col items-center gap-0.5">
       <motion.button
+        type="button"
         whileTap={isClickable ? { scale: 0.9 } : undefined}
         whileHover={isClickable ? { scale: 1.05 } : undefined}
-        onClick={isClickable ? onClick : undefined}
+        onClick={onClick}
         disabled={!isClickable}
-        title={bookedByName ? `Dipesan oleh ${bookedByName}` : `Kursi ${seatNumber}`}
+        title={
+          bookedByName
+            ? `${bookedByName}${isOvertime ? ' (🌙 Terdata Lembur / Off Pulang)' : ''}`
+            : `Kursi ${seatNumber}`
+        }
         className={cn(
-          'seat-shape flex items-center justify-center border-2 font-bold transition-all duration-200',
+          'seat-shape relative flex items-center justify-center border-2 font-bold transition-all duration-200',
           size === 'sm' ? 'w-11 h-11 text-sm' : 'w-13 h-13 text-base',
-          statusStyles[status]
+          isOvertime
+            ? 'bg-purple-100 border-purple-400 text-purple-900 ring-1 ring-purple-300 shadow-2xs cursor-pointer'
+            : statusStyles[status],
+          isClickable && 'cursor-pointer'
         )}
         aria-label={`Kursi ${seatNumber} - ${
-          status === 'available'
+          isOvertime
+            ? 'Terdata Lembur (Off Pulang)'
+            : status === 'available'
             ? 'Tersedia'
             : status === 'booked'
             ? 'Sudah dipesan'
@@ -57,13 +70,26 @@ export function SeatButton({
             : 'Tidak tersedia'
         }`}
       >
-        {seatNumber}
+        <span>{seatNumber}</span>
+
+        {/* Overtime Moon Indicator Badge */}
+        {isOvertime && (
+          <span
+            className="absolute -top-1 -right-1 w-4 h-4 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-xs text-[9px]"
+            title="Lembur (Tidak Pulang Reguler 16:30)"
+          >
+            <Moon className="w-2.5 h-2.5" />
+          </span>
+        )}
       </motion.button>
 
       {/* Name display below seat number */}
       {(status === 'booked' || status === 'selected') && bookedByName ? (
         <span
-          className="text-[9px] font-medium text-slate-700 max-w-[60px] truncate leading-tight text-center"
+          className={cn(
+            'text-[9px] font-medium max-w-[60px] truncate leading-tight text-center',
+            isOvertime ? 'text-purple-800 font-bold' : 'text-slate-700'
+          )}
           title={bookedByName}
         >
           {bookedByName.split(' ')[0]}

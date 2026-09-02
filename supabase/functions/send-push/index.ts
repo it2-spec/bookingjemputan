@@ -82,6 +82,22 @@ Deno.serve(async (req) => {
 
   const results = await Promise.allSettled(
     (subscriptions as PushSubscriptionRow[]).map(async (sub) => {
+      // If native device token without full WebPush encryption keys
+      if (sub.endpoint.startsWith('native:')) {
+        try {
+          // Broadcast to Supabase Realtime channel so APK receives notification instantly
+          const channel = supabase.channel(`user-notifications-${sub.employee_id}`);
+          await channel.send({
+            type: 'broadcast',
+            event: 'new-notification',
+            payload: { title, message, url: '/' },
+          });
+        } catch (bErr) {
+          console.warn('[Realtime Broadcast] Error:', bErr);
+        }
+        return { ok: true, isNative: true };
+      }
+
       const pushSubscription = {
         endpoint: sub.endpoint,
         keys: {

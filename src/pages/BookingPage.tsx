@@ -27,7 +27,9 @@ import {
   getTomorrowDate,
   isBookingOpen,
   getVehicleType,
+  normalizeUnitBookings,
 } from '../lib/vehicleLogic';
+
 import { DEPARTURE_TIME } from '../lib/constants';
 import toast from 'react-hot-toast';
 
@@ -70,24 +72,20 @@ export default function BookingPage() {
     }
   }, [routes, employee?.assigned_route_id, selectedRouteId, preselectedRoute]);
 
-  // Set default pickup point when routeSchedule changes
+  // Set default pickup point from profile if matching route, otherwise keep empty
   useEffect(() => {
-    if (routeSchedule && routeSchedule.stops.length > 0 && !selectedPickupPoint) {
+    if (routeSchedule && routeSchedule.stops.length > 0) {
       const empDefault = employee?.default_pickup_point || (employee?.id ? localStorage.getItem(`shuttle_default_pickup_${employee.id}`) : null);
-      const cachedLast = localStorage.getItem('shuttle_last_pickup_point');
-
       const matchesEmpDefault = empDefault && routeSchedule.stops.some((s) => s.name === empDefault);
-      const matchesCached = cachedLast && routeSchedule.stops.some((s) => s.name === cachedLast);
 
       if (matchesEmpDefault) {
         setSelectedPickupPoint(empDefault!);
-      } else if (matchesCached) {
-        setSelectedPickupPoint(cachedLast!);
-      } else {
-        setSelectedPickupPoint(routeSchedule.stops[0].name);
+      } else if (!selectedPickupPoint || !routeSchedule.stops.some((s) => s.name === selectedPickupPoint)) {
+        setSelectedPickupPoint(''); // Must be explicitly selected by employee
       }
     }
-  }, [routeSchedule, selectedPickupPoint, employee?.default_pickup_point, employee?.id]);
+  }, [routeSchedule, employee?.default_pickup_point, employee?.id]);
+
 
   // Helper: Determine unit number (1 or 2) based on selected pickup point
   const getUnitFromPickupPoint = (pickupPoint: string): number => {
@@ -193,14 +191,13 @@ export default function BookingPage() {
         className="flex items-center gap-3"
       >
         <button
-          onClick={() =>
-            selectedRouteId ? setSelectedRouteId(null) : navigate(-1)
-          }
+          onClick={() => navigate('/')}
           className="p-2 rounded-xl hover:bg-slate-100 transition-colors touch-target cursor-pointer"
-          aria-label="Kembali"
+          aria-label="Kembali ke Beranda"
         >
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
+
         <div>
           <h1 className="text-lg font-bold text-slate-900 font-[family-name:var(--font-display)]">
             {selectedRouteId ? 'Pilih Kursi' : 'Pilih Rute'}
@@ -308,6 +305,7 @@ export default function BookingPage() {
                   onChange={(e) => setSelectedPickupPoint(e.target.value)}
                   className="w-full px-3 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold text-slate-900 cursor-pointer"
                 >
+                  <option value="">-- Pilih Titik Penjemputan --</option>
                   {selectedRoute?.route_name.toLowerCase().includes('karawang barat') ? (
                     <>
                       <optgroup label="🚗 ZONA TANJUNG PURA (Unit 1)">
@@ -337,6 +335,7 @@ export default function BookingPage() {
                     ))
                   )}
                 </select>
+
               </div>
             )}
 
@@ -410,12 +409,21 @@ export default function BookingPage() {
             ) : (
               <SeatMap
                 vehicleType={vehicleInfo.vehicleType}
-                bookings={bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber)}
+                bookings={
+                  (selectedRoute?.unit_count || 1) > 1
+                    ? normalizeUnitBookings(
+                        bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber),
+                        6,
+                        employee?.id
+                      ).normalizedBookings
+                    : bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber)
+                }
                 selectedSeat={selectedSeat}
                 onSeatSelect={handleSeatSelect}
                 currentEmployeeId={employee?.id}
               />
             )}
+
 
             {/* Book button */}
             {selectedSeat && (

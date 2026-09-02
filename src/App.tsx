@@ -2,6 +2,7 @@
 // Main Application Router Setup
 // ============================================================
 
+import { useEffect } from 'react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
@@ -27,6 +28,9 @@ import { DriverDashboard } from './pages/driver/DriverDashboard';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
 import SuperAdminPassengers from './pages/superadmin/SuperAdminPassengers';
 import SuperAdminInvoice from './pages/superadmin/SuperAdminInvoice';
+import { VendorLayout } from './components/layout/VendorLayout';
+import VendorApprovalPage from './pages/vendor/VendorApprovalPage';
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,11 +83,33 @@ const router = createBrowserRouter([
       { path: 'invoice', element: <SuperAdminInvoice /> },
     ],
   },
+  {
+    path: '/vendor',
+    element: <VendorLayout />,
+    children: [
+      { index: true, element: <VendorApprovalPage /> },
+    ],
+  },
 ]);
 
-// Activates reminder hook inside AuthProvider context
+// Activates reminder hook and prompts for notification permission on initial app launch
 function ReminderProvider() {
   useBookingReminder();
+
+  useEffect(() => {
+    // Check if permission already asked before
+    const hasPrompted = localStorage.getItem('initial_notification_prompted');
+    if (!hasPrompted) {
+      localStorage.setItem('initial_notification_prompted', 'true');
+      import('./lib/notificationService').then(({ requestNotificationPermission }) => {
+        // Small delay so UI renders smoothly first
+        setTimeout(() => {
+          requestNotificationPermission().catch(console.warn);
+        }, 1000);
+      });
+    }
+  }, []);
+
   return null;
 }
 

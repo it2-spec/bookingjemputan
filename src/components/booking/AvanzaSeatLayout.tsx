@@ -11,7 +11,7 @@ import { SeatButton } from './SeatButton';
 import type { SeatStatus } from '../../lib/types';
 
 interface AvanzaSeatLayoutProps {
-  seats: Map<number, { status: SeatStatus; bookedBy?: string }>;
+  seats: Map<number, { status: SeatStatus; bookedBy?: string; isOvertime?: boolean }>;
   onSeatClick: (seatNumber: number) => void;
 }
 
@@ -41,6 +41,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={1}
             status={getSeat(1).status}
             bookedByName={getSeat(1).bookedBy}
+            isOvertime={getSeat(1).isOvertime}
             onClick={() => onSeatClick(1)}
             size="sm"
           />
@@ -57,6 +58,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={2}
             status={getSeat(2).status}
             bookedByName={getSeat(2).bookedBy}
+            isOvertime={getSeat(2).isOvertime}
             onClick={() => onSeatClick(2)}
             size="sm"
           />
@@ -64,6 +66,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={3}
             status={getSeat(3).status}
             bookedByName={getSeat(3).bookedBy}
+            isOvertime={getSeat(3).isOvertime}
             onClick={() => onSeatClick(3)}
             size="sm"
           />
@@ -71,6 +74,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={4}
             status={getSeat(4).status}
             bookedByName={getSeat(4).bookedBy}
+            isOvertime={getSeat(4).isOvertime}
             onClick={() => onSeatClick(4)}
             size="sm"
           />
@@ -82,6 +86,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={5}
             status={getSeat(5).status}
             bookedByName={getSeat(5).bookedBy}
+            isOvertime={getSeat(5).isOvertime}
             onClick={() => onSeatClick(5)}
             size="sm"
           />
@@ -89,6 +94,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
             seatNumber={6}
             status={getSeat(6).status}
             bookedByName={getSeat(6).bookedBy}
+            isOvertime={getSeat(6).isOvertime}
             onClick={() => onSeatClick(6)}
             size="sm"
           />

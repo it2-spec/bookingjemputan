@@ -221,3 +221,82 @@ body {
 .seat-shape:active {
   transform: scale(0.92);
 }
+
+/* ============================================================
+   TomSelect Custom Styling
+   ============================================================ */
+
+.ts-wrapper-custom {
+  width: 100%;
+}
+
+.ts-wrapper-custom .ts-control {
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.ts-wrapper-custom.focus .ts-control {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.ts-wrapper-custom .ts-control input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+  opacity: 1;
+  transition: opacity 0.12s ease-out;
+}
+
+.ts-wrapper-custom.focus .ts-control input::placeholder,
+.ts-wrapper-custom.input-active .ts-control input::placeholder {
+  opacity: 0 !important;
+}
+
+.ts-wrapper-custom .ts-dropdown {
+
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  overflow: hidden;
+  z-index: 50;
+  margin-top: 4px;
+}
+
+.ts-wrapper-custom .ts-dropdown .active {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.ts-wrapper-custom .ts-dropdown .option {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.ts-wrapper-custom .clear-button {
+  color: #94a3b8;
+  opacity: 0.7;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 0 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ts-wrapper-custom .clear-button:hover {
+  color: #ef4444;
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+

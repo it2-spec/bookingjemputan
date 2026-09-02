@@ -19,7 +19,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (nik: string) => Promise<{ success: boolean; employee?: Employee; error?: string }>;
   logout: () => void;
+  updateEmployeeState: (updated: Partial<Employee>) => void;
+  refreshEmployee: () => Promise<void>;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -55,6 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const freshEmp = data as Employee;
               setEmployee(freshEmp);
               localStorage.setItem(STORAGE_KEY, JSON.stringify(freshEmp));
+
+              // Automatically ensure push subscription exists in DB
+              import('../lib/notificationService').then(({ subscribeToPush }) => {
+                subscribeToPush(freshEmp.id).catch(console.warn);
+              });
             }
           });
       } catch {
@@ -85,6 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setEmployee(emp);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(emp));
 
+      // Automatically register device to push_subscriptions
+      import('../lib/notificationService').then(({ subscribeToPush }) => {
+        subscribeToPush(emp.id).catch(console.warn);
+      });
+
       return { success: true, employee: emp };
     } catch {
       return {
@@ -99,6 +112,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
+  const updateEmployeeState = useCallback((updated: Partial<Employee>) => {
+    setEmployee((prev) => {
+      if (!prev) return null;
+      const next = { ...prev, ...updated };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const refreshEmployee = useCallback(async () => {
+    if (!employee?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('id', employee.id)
+        .single();
+      if (!error && data) {
+        const fresh = data as Employee;
+        setEmployee(fresh);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+      }
+    } catch (e) {
+      console.warn('Failed to refresh employee:', e);
+    }
+  }, [employee?.id]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -107,11 +147,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!employee,
         login,
         logout,
+        updateEmployeeState,
+        refreshEmployee,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
+
 }
 
 export function useAuth(): AuthContextType {

@@ -18,7 +18,10 @@ import {
   X,
   Check,
   Ban,
+  Clock,
+  XCircle,
 } from 'lucide-react';
+
 
 // ----- Types -----
 
@@ -37,7 +40,11 @@ interface InvoiceDailyOverride {
   override_vehicle_type?: VehicleType | null;
   custom_price?: number | null;
   note?: string | null;
+  vendor_approval_status?: 'pending' | 'approved' | 'rejected';
+  vendor_approved_at?: string | null;
+  vendor_approval_note?: string | null;
 }
+
 
 interface RouteRecap {
   routeId: string;
@@ -47,8 +54,10 @@ interface RouteRecap {
   price: number;
   subtotal: number;
   isBillable: boolean;
+  approvalStatus: 'pending' | 'approved' | 'rejected';
   note?: string;
 }
+
 
 interface DayRecap {
   date: string;
@@ -233,11 +242,26 @@ export default function SuperAdminInvoice() {
               const isUnit2Billable = hasUnitSources ? Boolean(unitSources['2']) : ((matchedOverride as any)?.is_billable_unit2 ?? true);
 
               const isBillable = matchedOverride ? (matchedOverride.is_billable || isUnit1Billable || isUnit2Billable) : true;
+
+              // --- Vendor Approval Status ---
+              // Default 'pending' jika belum ada override atau belum disetujui vendor
+              const approvalStatus: 'pending' | 'approved' | 'rejected' =
+                matchedOverride?.vendor_approval_status ?? 'pending';
+              const isApproved = approvalStatus === 'approved';
+
+              const matchedRoute = routes.find((r) => r.id === routeId);
+              const fallbackVehicle =
+                matchedRoute?.manual_vehicle_type && matchedRoute.manual_vehicle_type !== 'Auto'
+                  ? matchedRoute.manual_vehicle_type
+                  : getVehicleType(info.count);
+
               const vehicleType =
-                matchedOverride?.override_vehicle_type || getVehicleType(info.count);
+                matchedOverride?.override_vehicle_type || fallbackVehicle;
+
 
               let price = 0;
-              if (isBillable) {
+              // Hanya hitung harga jika billable DAN sudah disetujui vendor
+              if (isBillable && isApproved) {
                 // If 1 is vendor and 1 is internal for a 2-unit split, invoice price is 1x Avanza instead of Elf Short
                 if (hasUnitSources && (isUnit1Billable !== isUnit2Billable)) {
                   const avanzaPrice = activePrices.find(
@@ -255,7 +279,7 @@ export default function SuperAdminInvoice() {
                 }
               }
 
-              let note = matchedOverride?.note || undefined;
+              let note = matchedOverride?.vendor_approval_note || matchedOverride?.note || undefined;
               if (hasUnitSources && isUnit1Billable !== isUnit2Billable) {
                 note = isUnit1Billable 
                   ? 'Unit 1: Vendor (Avanza) | Unit 2: Internal PT (Rp 0)' 
@@ -268,12 +292,14 @@ export default function SuperAdminInvoice() {
                 vehicleType: hasUnitSources && isUnit1Billable !== isUnit2Billable ? 'Avanza (1 Unit Vendor)' : vehicleType,
                 passengerCount: info.count,
                 price,
-                subtotal: price, // Rp 0 if not billable
-                isBillable: price > 0,
+                subtotal: price, // Rp 0 jika tidak billable atau belum approved
+                isBillable: isBillable && isApproved && price > 0,
+                approvalStatus,
                 note,
               };
             }
           );
+
 
           routeRecaps.sort((a, b) => a.routeName.localeCompare(b.routeName));
           const dayTotal = routeRecaps.reduce((sum, r) => sum + r.subtotal, 0);
@@ -323,19 +349,70 @@ export default function SuperAdminInvoice() {
     }
   };
 
+  // Approve order vendor dari halaman rekap invoice (superadmin)
+  const handleApproveOrder = async (date: string, routeId: string) => {
+    try {
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: date,
+          route_id: routeId,
+          is_billable: true,
+          vendor_approval_status: 'approved',
+          vendor_approved_at: new Date().toISOString(),
+          vendor_approval_note: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
+      if (error) throw error;
+      toast.success('Order disetujui oleh vendor ✅');
+      handleHitungRekap();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menyetujui order');
+    }
+  };
+
+  // Reject order vendor dari halaman rekap invoice (superadmin)
+  const handleRejectOrder = async (date: string, routeId: string) => {
+    try {
+      const { error } = await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: date,
+          route_id: routeId,
+          is_billable: false,
+          vendor_approval_status: 'rejected',
+          vendor_approved_at: new Date().toISOString(),
+          vendor_approval_note: 'Ditolak dari halaman rekap invoice',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
+      if (error) throw error;
+      toast.success('Order ditolak ❌');
+      handleHitungRekap();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menolak order');
+    }
+  };
+
   const grandTotal = rekapData.reduce((sum, d) => sum + d.dayTotal, 0);
   const totalPassengers = rekapData.reduce(
     (sum, d) => sum + d.routes.reduce((rs, r) => rs + r.passengerCount, 0),
     0
   );
   const totalVendorTrips = rekapData.reduce(
-    (sum, d) => sum + d.routes.filter((r) => r.isBillable).length,
+    (sum, d) => sum + d.routes.filter((r) => r.approvalStatus === 'approved' && r.isBillable).length,
     0
   );
   const totalInternalTrips = rekapData.reduce(
-    (sum, d) => sum + d.routes.filter((r) => !r.isBillable).length,
+    (sum, d) => sum + d.routes.filter((r) => !r.isBillable && r.approvalStatus !== 'pending').length,
     0
   );
+  const totalPendingTrips = rekapData.reduce(
+    (sum, d) => sum + d.routes.filter((r) => r.approvalStatus === 'pending').length,
+    0
+  );
+
 
   // Export Excel
   const handleExportExcel = () => {
@@ -350,13 +427,19 @@ export default function SuperAdminInvoice() {
 
     rekapData.forEach((day) => {
       day.routes.forEach((route, i) => {
+        const approvalLabel =
+          route.approvalStatus === 'approved' ? 'Disetujui Vendor' :
+          route.approvalStatus === 'rejected' ? 'Ditolak Vendor' :
+          'Menunggu Persetujuan';
+
         rows.push({
           Tanggal: i === 0 ? day.date : '',
           Rute: route.routeName,
           Armada: route.vehicleType,
           Penumpang: route.passengerCount,
-          'Status Tagihan': route.isBillable ? 'Sewa Vendor' : 'Driver Sendiri (Rp 0)',
-          'Harga/Hari (Rp)': route.isBillable ? route.price : 0,
+          'Status Tagihan': route.approvalStatus === 'approved' && route.isBillable ? 'Sewa Vendor' : !route.isBillable ? 'Driver Sendiri (Rp 0)' : 'Sewa Vendor',
+          'Status Vendor': approvalLabel,
+          'Harga/Hari (Rp)': route.approvalStatus === 'approved' ? route.price : 0,
           'Subtotal (Rp)': route.subtotal,
         });
       });
@@ -366,6 +449,7 @@ export default function SuperAdminInvoice() {
         Armada: '',
         Penumpang: '',
         'Status Tagihan': '',
+        'Status Vendor': '',
         'Harga/Hari (Rp)': 'Sub-Total Hari:',
         'Subtotal (Rp)': day.dayTotal,
       });
@@ -378,6 +462,7 @@ export default function SuperAdminInvoice() {
       Armada: '',
       Penumpang: '',
       'Status Tagihan': '',
+      'Status Vendor': '',
       'Harga/Hari (Rp)': 'GRAND TOTAL:',
       'Subtotal (Rp)': grandTotal,
     });
@@ -389,6 +474,7 @@ export default function SuperAdminInvoice() {
       { wch: 12 },
       { wch: 12 },
       { wch: 22 },
+      { wch: 22 },
       { wch: 18 },
       { wch: 18 },
     ];
@@ -398,6 +484,7 @@ export default function SuperAdminInvoice() {
     XLSX.writeFile(wb, `Rekap_Invoice_Armada_${dateFrom}_sd_${dateTo}.xlsx`);
     toast.success('File Excel berhasil didownload! 📄');
   };
+
 
   const handlePrint = () => {
     if (rekapData.length === 0) {
@@ -613,13 +700,21 @@ export default function SuperAdminInvoice() {
             ) : (
               <>
                 {/* Stats */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 no-print mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 no-print mb-4">
                   <div className="bg-blue-50 border border-slate-200 rounded-2xl p-4 shadow-xs">
                     <p className="text-xs font-semibold text-slate-500">Hari Operasional</p>
                     <p className="text-xl font-bold mt-1 text-blue-600">{rekapData.length} <span className="text-xs text-slate-500 font-normal">hari</span></p>
                   </div>
+                  <div className={`border rounded-2xl p-4 shadow-xs ${totalPendingTrips > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                    <p className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Menunggu Vendor
+                    </p>
+                    <p className={`text-xl font-bold mt-1 ${totalPendingTrips > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                      {totalPendingTrips} <span className="text-xs text-slate-500 font-normal">trip</span>
+                    </p>
+                  </div>
                   <div className="bg-emerald-50 border border-slate-200 rounded-2xl p-4 shadow-xs">
-                    <p className="text-xs font-semibold text-slate-500">Sewa Vendor (Invoice)</p>
+                    <p className="text-xs font-semibold text-slate-500">Sewa Vendor (Approved)</p>
                     <p className="text-xl font-bold mt-1 text-emerald-600">{totalVendorTrips} <span className="text-xs text-slate-500 font-normal">trip</span></p>
                   </div>
                   <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 shadow-xs">
@@ -633,8 +728,12 @@ export default function SuperAdminInvoice() {
                   <div className="bg-amber-50 border border-slate-200 rounded-2xl p-4 shadow-xs col-span-2 sm:col-span-1">
                     <p className="text-xs font-semibold text-slate-500">Grand Total Tagihan</p>
                     <p className="text-xl font-bold mt-1 text-amber-600 font-mono">{formatRupiah(grandTotal)}</p>
+                    {totalPendingTrips > 0 && (
+                      <p className="text-[10px] text-amber-500 mt-0.5">({totalPendingTrips} trip belum disetujui)</p>
+                    )}
                   </div>
                 </div>
+
 
                 {/* Table */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
@@ -685,6 +784,9 @@ export default function SuperAdminInvoice() {
                           <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider no-print">
                             Status Tagihan (Klik Utk Ubah)
                           </th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider no-print">
+                            Status Vendor
+                          </th>
                           <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                             Harga/Hari
                           </th>
@@ -699,8 +801,15 @@ export default function SuperAdminInvoice() {
                             {day.routes.map((route, routeIdx) => (
                               <tr
                                 key={`${day.date}-${route.routeId}`}
-                                className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${!route.isBillable ? 'bg-slate-50/80' : dayIdx % 2 === 0 ? '' : 'bg-slate-50/30'
-                                  }`}
+                                className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${
+                                  route.approvalStatus === 'pending'
+                                    ? 'bg-amber-50/40'
+                                    : route.approvalStatus === 'rejected'
+                                    ? 'bg-red-50/30'
+                                    : !route.isBillable
+                                    ? 'bg-slate-50/80'
+                                    : dayIdx % 2 === 0 ? '' : 'bg-slate-50/30'
+                                }`}
                               >
                                 <td className="px-5 py-3">
                                   {routeIdx === 0 ? (
@@ -763,6 +872,60 @@ export default function SuperAdminInvoice() {
                                   </button>
                                 </td>
 
+                                {/* Vendor Approval Status Column */}
+                                <td className="px-4 py-3 no-print">
+                                  <div className="flex flex-col gap-1.5">
+                                    {route.approvalStatus === 'pending' && (
+                                      <>
+                                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 w-fit">
+                                          <Clock className="w-3 h-3" /> Menunggu
+                                        </span>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => handleApproveOrder(day.date, route.routeId)}
+                                            className="flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                          >
+                                            <Check className="w-3 h-3" /> Setujui
+                                          </button>
+                                          <button
+                                            onClick={() => handleRejectOrder(day.date, route.routeId)}
+                                            className="flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                          >
+                                            <Ban className="w-3 h-3" /> Tolak
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                    {route.approvalStatus === 'approved' && (
+                                      <>
+                                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+                                          <CheckCircle2 className="w-3 h-3" /> Disetujui
+                                        </span>
+                                        <button
+                                          onClick={() => handleRejectOrder(day.date, route.routeId)}
+                                          className="text-[10px] text-slate-400 hover:text-red-500 underline underline-offset-1 cursor-pointer transition-colors text-left w-fit"
+                                        >
+                                          Batalkan
+                                        </button>
+                                      </>
+                                    )}
+                                    {route.approvalStatus === 'rejected' && (
+                                      <>
+                                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200 w-fit">
+                                          <XCircle className="w-3 h-3" /> Ditolak
+                                        </span>
+                                        <button
+                                          onClick={() => handleApproveOrder(day.date, route.routeId)}
+                                          className="text-[10px] text-slate-400 hover:text-emerald-600 underline underline-offset-1 cursor-pointer transition-colors text-left w-fit"
+                                        >
+                                          Setujui
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+
+
                                 <td className="px-4 py-3 text-right">
                                   {!route.isBillable ? (
                                     <span className="text-xs text-slate-400 font-mono line-through">
@@ -790,7 +953,7 @@ export default function SuperAdminInvoice() {
                             {/* Subtotal Row */}
                             <tr className="bg-slate-100/70 border-b-2 border-slate-200">
                               <td
-                                colSpan={6}
+                                colSpan={7}
                                 className="px-5 py-2 text-right text-xs font-bold text-slate-600"
                               >
                                 Subtotal {formatDateLocal(day.date)}
@@ -807,7 +970,7 @@ export default function SuperAdminInvoice() {
                       <tfoot>
                         <tr className="bg-blue-600">
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-5 py-4 text-right text-sm font-extrabold text-blue-100 uppercase tracking-wider"
                           >
                             Grand Total Invoice ({dateFrom} s/d {dateTo})

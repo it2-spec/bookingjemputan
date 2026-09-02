@@ -8,7 +8,8 @@ export type VehicleType = 'Avanza' | 'Elf Short' | 'Elf Long';
 
 export type BookingStatus = 'confirmed' | 'cancelled' | 'closed';
 
-export type UserRole = 'employee' | 'driver' | 'admin' | 'superadmin';
+export type UserRole = 'employee' | 'driver' | 'admin' | 'superadmin' | 'vendor';
+
 
 // ----- Database Row Types -----
 

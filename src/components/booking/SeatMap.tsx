@@ -16,6 +16,8 @@ interface SeatMapProps {
   bookings: Booking[];
   selectedSeat: number | null;
   onSeatSelect: (seatNumber: number) => void;
+  onSeatClickWithBooking?: (seatNumber: number, booking?: Booking) => void;
+  allowBookedClick?: boolean;
   currentEmployeeId?: string;
 }
 
@@ -24,10 +26,12 @@ export function SeatMap({
   bookings,
   selectedSeat,
   onSeatSelect,
+  onSeatClickWithBooking,
+  allowBookedClick = false,
 }: SeatMapProps) {
   // Build seat status map
   const seatMap = useMemo(() => {
-    const map = new Map<number, { status: SeatStatus; bookedBy?: string }>();
+    const map = new Map<number, { status: SeatStatus; bookedBy?: string; isOvertime?: boolean; booking?: Booking }>();
 
     // Mark booked seats
     for (const booking of bookings) {
@@ -35,6 +39,8 @@ export function SeatMap({
         map.set(booking.seat_number, {
           status: 'booked',
           bookedBy: (booking as any).employee?.name || 'Penumpang',
+          isOvertime: Boolean((booking as any).is_overtime_no_return),
+          booking: booking,
         });
       }
     }
@@ -45,6 +51,8 @@ export function SeatMap({
       map.set(selectedSeat, {
         status: 'selected',
         bookedBy: existing?.bookedBy || 'Anda',
+        isOvertime: existing?.isOvertime,
+        booking: existing?.booking,
       });
     }
 
@@ -53,6 +61,13 @@ export function SeatMap({
 
   const handleSeatClick = (seatNumber: number) => {
     const seatInfo = seatMap.get(seatNumber);
+    if (onSeatClickWithBooking) {
+      onSeatClickWithBooking(seatNumber, seatInfo?.booking);
+    }
+    if (allowBookedClick) {
+      onSeatSelect(seatNumber);
+      return;
+    }
     if (seatInfo?.status === 'booked') return;
     onSeatSelect(seatNumber);
   };
@@ -97,7 +112,8 @@ export function SeatMap({
       <div className="flex flex-wrap justify-center gap-4 mt-6">
         {[
           { color: 'bg-emerald-100 border-emerald-300', label: 'Tersedia' },
-          { color: 'bg-red-100 border-red-300', label: 'Dipesan' },
+          { color: 'bg-red-100 border-red-300', label: 'Dipesan (Reguler)' },
+          { color: 'bg-purple-100 border-purple-400', label: 'Lembur (Off Pulang)' },
           { color: 'bg-amber-100 border-amber-400', label: 'Dipilih' },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-1.5">
