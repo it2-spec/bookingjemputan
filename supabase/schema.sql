@@ -88,9 +88,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_one_booking_per_day
   ON bookings(employee_id, departure_date)
   WHERE status = 'confirmed';
 
--- Prevent duplicate seats per route per day (only confirmed bookings)
+-- Prevent duplicate seats per route per unit per day (only confirmed bookings)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_seat_per_route_day
-  ON bookings(route_id, departure_date, seat_number)
+  ON bookings(route_id, departure_date, COALESCE(unit_number, 1), seat_number)
   WHERE status = 'confirmed';
 
 -- Performance indexes

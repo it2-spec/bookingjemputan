@@ -16,11 +16,63 @@ import type { SeatStatus } from '../../lib/types';
 interface ElfLongSeatLayoutProps {
   seats: Map<number, { status: SeatStatus; bookedBy?: string; isOvertime?: boolean }>;
   onSeatClick: (seatNumber: number) => void;
+  allowDragDrop?: boolean;
+  draggingSeat?: number | null;
+  dragOverSeat?: number | null;
+  onDragStart?: (seatNumber: number, e: React.DragEvent) => void;
+  onDragOver?: (seatNumber: number, e: React.DragEvent) => void;
+  onDragLeave?: (seatNumber: number, e: React.DragEvent) => void;
+  onDrop?: (seatNumber: number, e: React.DragEvent) => void;
+  onTouchStart?: (seatNumber: number, e: React.TouchEvent) => void;
+  onTouchMove?: (seatNumber: number, e: React.TouchEvent) => void;
+  onTouchEnd?: (seatNumber: number, e: React.TouchEvent) => void;
 }
 
-export function ElfLongSeatLayout({ seats, onSeatClick }: ElfLongSeatLayoutProps) {
+export function ElfLongSeatLayout({
+  seats,
+  onSeatClick,
+  allowDragDrop = false,
+  draggingSeat = null,
+  dragOverSeat = null,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+}: ElfLongSeatLayoutProps) {
   const getSeat = (num: number) =>
     seats.get(num) || { status: 'available' as SeatStatus };
+
+  const renderSeat = (num: number) => {
+    const seatInfo = getSeat(num);
+    const hasPassenger = Boolean(seatInfo.bookedBy) || seatInfo.status === 'booked' || seatInfo.status === 'selected';
+    const isDraggable = Boolean(allowDragDrop && hasPassenger);
+    const isDragging = draggingSeat === num;
+    const isDragOver = dragOverSeat === num && draggingSeat !== num;
+
+    return (
+      <SeatButton
+        seatNumber={num}
+        status={seatInfo.status}
+        bookedByName={seatInfo.bookedBy}
+        isOvertime={seatInfo.isOvertime}
+        onClick={() => onSeatClick(num)}
+        size="sm"
+        isDraggable={isDraggable}
+        isDragging={isDragging}
+        isDragOver={isDragOver}
+        onDragStart={(e) => onDragStart?.(num, e)}
+        onDragOver={(e) => onDragOver?.(num, e)}
+        onDragLeave={(e) => onDragLeave?.(num, e)}
+        onDrop={(e) => onDrop?.(num, e)}
+        onTouchStart={(e) => onTouchStart?.(num, e)}
+        onTouchMove={(e) => onTouchMove?.(num, e)}
+        onTouchEnd={(e) => onTouchEnd?.(num, e)}
+      />
+    );
+  };
 
   return (
     <motion.div
@@ -39,14 +91,7 @@ export function ElfLongSeatLayout({ seats, onSeatClick }: ElfLongSeatLayoutProps
 
         {/* Row 1: [1, null, null, DRIVER] */}
         <div className="grid grid-cols-4 gap-2 items-center mb-3">
-          <SeatButton
-            seatNumber={1}
-            status={getSeat(1).status}
-            bookedByName={getSeat(1).bookedBy}
-            isOvertime={getSeat(1).isOvertime}
-            onClick={() => onSeatClick(1)}
-            size="sm"
-          />
+          {renderSeat(1)}
           <div className="w-11 h-11" />
           <div className="w-11 h-11" />
           <div className="w-11 h-11 rounded-[var(--radius-seat)] bg-slate-200 border-2 border-slate-300 flex flex-col items-center justify-center">
@@ -58,160 +103,41 @@ export function ElfLongSeatLayout({ seats, onSeatClick }: ElfLongSeatLayoutProps
         {/* Row 2: [null, 2, 3, 4] */}
         <div className="grid grid-cols-4 gap-2 items-center mb-3">
           <div className="w-11 h-11" />
-          <SeatButton
-            seatNumber={2}
-            status={getSeat(2).status}
-            bookedByName={getSeat(2).bookedBy}
-            isOvertime={getSeat(2).isOvertime}
-            onClick={() => onSeatClick(2)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={3}
-            status={getSeat(3).status}
-            bookedByName={getSeat(3).bookedBy}
-            isOvertime={getSeat(3).isOvertime}
-            onClick={() => onSeatClick(3)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={4}
-            status={getSeat(4).status}
-            bookedByName={getSeat(4).bookedBy}
-            isOvertime={getSeat(4).isOvertime}
-            onClick={() => onSeatClick(4)}
-            size="sm"
-          />
+          {renderSeat(2)}
+          {renderSeat(3)}
+          {renderSeat(4)}
         </div>
 
         {/* Row 3: [5, 6, 7, 8] */}
         <div className="grid grid-cols-4 gap-2 items-center mb-3">
-          <SeatButton
-            seatNumber={5}
-            status={getSeat(5).status}
-            bookedByName={getSeat(5).bookedBy}
-            isOvertime={getSeat(5).isOvertime}
-            onClick={() => onSeatClick(5)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={6}
-            status={getSeat(6).status}
-            bookedByName={getSeat(6).bookedBy}
-            isOvertime={getSeat(6).isOvertime}
-            onClick={() => onSeatClick(6)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={7}
-            status={getSeat(7).status}
-            bookedByName={getSeat(7).bookedBy}
-            isOvertime={getSeat(7).isOvertime}
-            onClick={() => onSeatClick(7)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={8}
-            status={getSeat(8).status}
-            bookedByName={getSeat(8).bookedBy}
-            isOvertime={getSeat(8).isOvertime}
-            onClick={() => onSeatClick(8)}
-            size="sm"
-          />
+          {renderSeat(5)}
+          {renderSeat(6)}
+          {renderSeat(7)}
+          {renderSeat(8)}
         </div>
 
         {/* Row 4: [null, 9, 10, 11] */}
         <div className="grid grid-cols-4 gap-2 items-center mb-3">
           <div className="w-11 h-11" />
-          <SeatButton
-            seatNumber={9}
-            status={getSeat(9).status}
-            bookedByName={getSeat(9).bookedBy}
-            isOvertime={getSeat(9).isOvertime}
-            onClick={() => onSeatClick(9)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={10}
-            status={getSeat(10).status}
-            bookedByName={getSeat(10).bookedBy}
-            isOvertime={getSeat(10).isOvertime}
-            onClick={() => onSeatClick(10)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={11}
-            status={getSeat(11).status}
-            bookedByName={getSeat(11).bookedBy}
-            isOvertime={getSeat(11).isOvertime}
-            onClick={() => onSeatClick(11)}
-            size="sm"
-          />
+          {renderSeat(9)}
+          {renderSeat(10)}
+          {renderSeat(11)}
         </div>
 
         {/* Row 5: [null, 12, 13, 14] */}
         <div className="grid grid-cols-4 gap-2 items-center mb-3">
           <div className="w-11 h-11" />
-          <SeatButton
-            seatNumber={12}
-            status={getSeat(12).status}
-            bookedByName={getSeat(12).bookedBy}
-            isOvertime={getSeat(12).isOvertime}
-            onClick={() => onSeatClick(12)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={13}
-            status={getSeat(13).status}
-            bookedByName={getSeat(13).bookedBy}
-            isOvertime={getSeat(13).isOvertime}
-            onClick={() => onSeatClick(13)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={14}
-            status={getSeat(14).status}
-            bookedByName={getSeat(14).bookedBy}
-            isOvertime={getSeat(14).isOvertime}
-            onClick={() => onSeatClick(14)}
-            size="sm"
-          />
+          {renderSeat(12)}
+          {renderSeat(13)}
+          {renderSeat(14)}
         </div>
 
         {/* Row 6: [15, 16, 17, 18] */}
         <div className="grid grid-cols-4 gap-2 items-center">
-          <SeatButton
-            seatNumber={15}
-            status={getSeat(15).status}
-            bookedByName={getSeat(15).bookedBy}
-            isOvertime={getSeat(15).isOvertime}
-            onClick={() => onSeatClick(15)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={16}
-            status={getSeat(16).status}
-            bookedByName={getSeat(16).bookedBy}
-            isOvertime={getSeat(16).isOvertime}
-            onClick={() => onSeatClick(16)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={17}
-            status={getSeat(17).status}
-            bookedByName={getSeat(17).bookedBy}
-            isOvertime={getSeat(17).isOvertime}
-            onClick={() => onSeatClick(17)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={18}
-            status={getSeat(18).status}
-            bookedByName={getSeat(18).bookedBy}
-            isOvertime={getSeat(18).isOvertime}
-            onClick={() => onSeatClick(18)}
-            size="sm"
-          />
+          {renderSeat(15)}
+          {renderSeat(16)}
+          {renderSeat(17)}
+          {renderSeat(18)}
         </div>
       </div>
     </motion.div>

@@ -44,12 +44,35 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
 
-  const { title, message, targetEndpoint, targetEmployeeId } = await req.json();
+  const {
+    title,
+    message,
+    targetEndpoint,
+    targetEmployeeId,
+    targetRole,
+    url = '/',
+    unbookedOnly = true,
+    targetDate,
+  } = await req.json();
   if (!title || !message) {
     return new Response(JSON.stringify({ error: 'title and message are required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
+  }
+
+  // If targeting a role (e.g. 'vendor'), also broadcast via Realtime channel
+  if (targetRole === 'vendor') {
+    try {
+      const vChannel = supabase.channel('vendor-notifications');
+      await vChannel.send({
+        type: 'broadcast',
+        event: 'new-notification',
+        payload: { title, message, url: url || '/vendor', timestamp: Date.now() },
+      });
+    } catch (vErr) {
+      console.warn('[Vendor Channel Broadcast] Error:', vErr);
+    }
   }
 
   // Fetch push subscriptions
@@ -58,14 +81,49 @@ Deno.serve(async (req) => {
     query = query.eq('endpoint', targetEndpoint);
   } else if (targetEmployeeId) {
     query = query.eq('employee_id', targetEmployeeId);
+  } else if (targetRole) {
+    const { data: roleEmps } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('role', targetRole);
+    const roleEmpIds = (roleEmps || []).map((e: any) => e.id);
+    query = query.in('employee_id', roleEmpIds);
   }
 
-  const { data: subscriptions, error } = await query;
+  const { data: rawSubscriptions, error } = await query;
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  let subscriptions = (rawSubscriptions || []) as PushSubscriptionRow[];
+
+  // Filter out employees who have ALREADY booked for tomorrow (if broadcast reminder)
+  if (unbookedOnly && !targetEndpoint && !targetEmployeeId && !targetRole) {
+    let departureDate = targetDate;
+    if (!departureDate) {
+      // Calculate tomorrow's date in WIB (UTC+7)
+      const nowWIB = new Date(Date.now() + 7 * 3600000);
+      const tomorrow = new Date(nowWIB.getTime() + 24 * 3600000);
+      departureDate = tomorrow.toISOString().split('T')[0];
+    }
+
+    const { data: bookedRows } = await supabase
+      .from('bookings')
+      .select('employee_id')
+      .eq('departure_date', departureDate)
+      .eq('status', 'confirmed');
+
+    const bookedEmployeeIds = new Set((bookedRows || []).map((b: any) => b.employee_id));
+
+    subscriptions = subscriptions.filter((sub) => {
+      if (sub.employee_id && bookedEmployeeIds.has(sub.employee_id)) {
+        return false; // Skip because user already booked
+      }
+      return true;
     });
   }
 
@@ -75,7 +133,7 @@ Deno.serve(async (req) => {
     icon: '/tracer.png',
     badge: '/tracer.png',
     image: '/tracer.png',
-    url: '/',
+    url: targetRole === 'vendor' ? '/vendor' : (url || '/'),
     tag: 'shuttle-' + Date.now(),
     timestamp: Date.now(),
   });

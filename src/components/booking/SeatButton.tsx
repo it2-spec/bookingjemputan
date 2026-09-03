@@ -14,6 +14,16 @@ interface SeatButtonProps {
   bookedByName?: string;
   isOvertime?: boolean;
   size?: 'sm' | 'md';
+  isDraggable?: boolean;
+  isDragging?: boolean;
+  isDragOver?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onTouchStart?: (e: React.TouchEvent) => void;
+  onTouchMove?: (e: React.TouchEvent) => void;
+  onTouchEnd?: (e: React.TouchEvent) => void;
 }
 
 const statusStyles: Record<SeatStatus, string> = {
@@ -34,29 +44,56 @@ export function SeatButton({
   bookedByName,
   isOvertime = false,
   size = 'md',
+  isDraggable = false,
+  isDragging = false,
+  isDragOver = false,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: SeatButtonProps) {
   const isClickable = !!onClick;
 
   return (
-    <div className="flex flex-col items-center gap-0.5">
+    <div
+      data-seat-number={seatNumber}
+      draggable={isDraggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      className={cn(
+        'flex flex-col items-center gap-0.5 select-none relative',
+        isDraggable && 'cursor-grab active:cursor-grabbing'
+      )}
+    >
       <motion.button
         type="button"
-        whileTap={isClickable ? { scale: 0.9 } : undefined}
-        whileHover={isClickable ? { scale: 1.05 } : undefined}
+        whileTap={isClickable && !isDraggable ? { scale: 0.9 } : undefined}
+        whileHover={isClickable && !isDragging ? { scale: isDragOver ? 1.1 : 1.05 } : undefined}
         onClick={onClick}
-        disabled={!isClickable}
+        disabled={!isClickable && !isDraggable}
         title={
           bookedByName
-            ? `${bookedByName}${isOvertime ? ' (🌙 Terdata Lembur / Off Pulang)' : ''}`
+            ? `${bookedByName}${isOvertime ? ' (🌙 Terdata Lembur / Off Pulang)' : ''}${isDraggable ? ' (Geser untuk pindah / tukar posisi)' : ''}`
             : `Kursi ${seatNumber}`
         }
         className={cn(
           'seat-shape relative flex items-center justify-center border-2 font-bold transition-all duration-200',
           size === 'sm' ? 'w-11 h-11 text-sm' : 'w-13 h-13 text-base',
           isOvertime
-            ? 'bg-purple-100 border-purple-400 text-purple-900 ring-1 ring-purple-300 shadow-2xs cursor-pointer'
+            ? 'bg-purple-100 border-purple-400 text-purple-900 ring-1 ring-purple-300 shadow-2xs'
             : statusStyles[status],
-          isClickable && 'cursor-pointer'
+          isClickable && 'cursor-pointer',
+          isDraggable && 'cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-blue-400 hover:shadow-md',
+          isDragging && 'opacity-40 scale-95 border-dashed border-blue-500 shadow-inner',
+          isDragOver && 'ring-4 ring-blue-500 ring-offset-2 scale-110 z-20 shadow-xl bg-blue-100 border-blue-500'
         )}
         aria-label={`Kursi ${seatNumber} - ${
           isOvertime

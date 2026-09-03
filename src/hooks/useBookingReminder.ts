@@ -14,11 +14,16 @@ import {
   requestNotificationPermission,
 } from '../lib/notificationService';
 import { supabase } from '../lib/supabase';
+import { getTomorrowDate } from '../lib/vehicleLogic';
 
-// Reminder schedule: 18:00 WIB + Test Time 11:55 WIB
+// Reminder schedule: 16:30, 17:00, 17:30, 18:00, 18:30, 18:50 WIB
 const REMINDER_TIMES_WIB = [
-  { hour: 11, minute: 55 },
+  { hour: 16, minute: 30 },
+  { hour: 17, minute: 0 },
+  { hour: 17, minute: 30 },
   { hour: 18, minute: 0 },
+  { hour: 18, minute: 30 },
+  { hour: 18, minute: 50 },
 ];
 
 function getWIBDate(): Date {
@@ -98,7 +103,7 @@ export function useBookingReminder() {
       const currentHour = wibNow.getHours();
       const currentMinute = wibNow.getMinutes();
 
-      // Check if current time matches 11:48 or 18:00 WIB
+      // Check if current time matches target reminder times
       const isTargetTime = REMINDER_TIMES_WIB.some(
         (t) => t.hour === currentHour && t.minute === currentMinute
       );
@@ -107,10 +112,26 @@ export function useBookingReminder() {
         const key = `reminder_test_${currentHour}_${currentMinute}`;
         if (!sessionStorage.getItem(key)) {
           sessionStorage.setItem(key, 'true');
-          showLocalNotification(
-            '🚨 Pengingat: Booking Jemputan Tutup Jam 19:00 WIB!',
-            `Halo ${employee.name.split(' ')[0]}, pemesanan jemputan untuk besok akan DITUTUP pukul 19:00 WIB! Segera lakukan booking sekarang.`,
-          );
+
+          // Hanya kirim notifikasi jika user BELUM booking untuk besok
+          const tomorrow = getTomorrowDate();
+          supabase
+            .from('bookings')
+            .select('id')
+            .eq('employee_id', employee.id)
+            .eq('departure_date', tomorrow)
+            .eq('status', 'confirmed')
+            .maybeSingle()
+            .then(({ data: existingBooking }) => {
+              if (existingBooking) {
+                // User sudah booking, tidak perlu pengingat
+                return;
+              }
+              showLocalNotification(
+                '🚨 Pengingat: Booking Jemputan Tutup Jam 19:00 WIB!',
+                `Halo ${employee.name.split(' ')[0]}, pemesanan jemputan untuk besok akan DITUTUP pukul 19:00 WIB! Segera lakukan booking sekarang.`,
+              );
+            });
         }
       }
     };
@@ -123,3 +144,4 @@ export function useBookingReminder() {
     };
   }, [isAuthenticated, employee]);
 }
+

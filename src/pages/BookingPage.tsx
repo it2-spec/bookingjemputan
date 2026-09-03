@@ -152,7 +152,7 @@ export default function BookingPage() {
         route_id: selectedRouteId,
         departure_date: tomorrowDate,
         seat_number: selectedSeat,
-        unit_number: selectedUnitNumber,
+        unit_number: (selectedRoute?.unit_count && selectedRoute.unit_count > 1) ? selectedUnitNumber : 1,
         vehicle_type: vehicleType,
         pickup_point: selectedPickupPoint,
         status: 'confirmed',

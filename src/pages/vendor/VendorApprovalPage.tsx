@@ -27,7 +27,7 @@ import {
   Edit3,
 } from 'lucide-react';
 import type { Booking, VehicleType } from '../../lib/types';
-import { getVehicleType, normalizeUnitBookings } from '../../lib/vehicleLogic';
+import { getVehicleType, getMaxSeats, normalizeUnitBookings } from '../../lib/vehicleLogic';
 
 import { getVehicleIcon } from '../../lib/utils';
 import { Dialog } from '../../components/ui/Dialog';
@@ -310,6 +310,8 @@ export default function VendorApprovalPage() {
           assigned_driver_id_unit3,
           driver_assignments,
           override_vehicle_type,
+          daily_vehicle_type,
+          daily_unit_count,
           id
         `)
         .gte('departure_date', dateFrom)
@@ -348,12 +350,13 @@ export default function VendorApprovalPage() {
 
         const override = overrideMap.get(`${date}_${routeId}`);
         const freshRoute = routesMap.get(routeId) || info.routeObj;
-        const isKB = info.routeName.toLowerCase().includes('karawang barat');
-        const hasUnit2Bookings = (bookings as any[] || []).some(
-          (b) => b.departure_date === date && b.route_id === routeId && (b.unit_number || 1) === 2
-        );
-        const unitCount = freshRoute?.unit_count || (isKB && hasUnit2Bookings ? 2 : 1);
-        const vehicleType = getVehicleType(info.count, freshRoute?.manual_vehicle_type);
+
+        // Daily vehicle configuration (synchronized with AdminDashboard)
+        const dailyManualType = override?.daily_vehicle_type ?? freshRoute?.manual_vehicle_type ?? 'Auto';
+        const isAuto = !dailyManualType || dailyManualType === 'Auto';
+        const unitCount = isAuto ? 1 : (override?.daily_unit_count || freshRoute?.unit_count || 1);
+        const autoVehicleType = getVehicleType(info.count, dailyManualType);
+        const vehicleType = override?.override_vehicle_type || autoVehicleType;
 
         result.push({
           departure_date: date,
@@ -361,7 +364,7 @@ export default function VendorApprovalPage() {
           route_name: info.routeName,
           route_obj: freshRoute,
           passenger_count: info.count,
-          vehicle_type: override?.override_vehicle_type || vehicleType,
+          vehicle_type: vehicleType,
           unit_count: unitCount,
           is_billable: override?.is_billable ?? true,
           vendor_approval_status: override?.vendor_approval_status ?? 'pending',
@@ -1360,14 +1363,8 @@ export default function VendorApprovalPage() {
             <>
               {(() => {
                 const isKB = selectedOrderForMap.route_name.toLowerCase().includes('karawang barat');
-                const hasUnit2 = allBookings.some(
-                  (b) => b.route_id === selectedOrderForMap.route_id &&
-                    b.departure_date === selectedOrderForMap.departure_date &&
-                    (b.unit_number || 1) === 2 &&
-                    b.status === 'confirmed'
-                );
-                const isMulti = (selectedOrderForMap.unit_count || 1) > 1 || (isKB && hasUnit2);
-                const effectiveUnitCount = isMulti ? Math.max(selectedOrderForMap.unit_count || 1, 2) : 1;
+                const isMulti = (selectedOrderForMap.unit_count || 1) > 1;
+                const effectiveUnitCount = selectedOrderForMap.unit_count || 1;
 
                 return (
                   <>
@@ -1383,7 +1380,7 @@ export default function VendorApprovalPage() {
                         </span>
                         {isMulti && (
                           <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                            Fisik: 2x Avanza
+                            Fisik: {effectiveUnitCount}x Avanza
                           </span>
                         )}
                       </div>
@@ -1410,8 +1407,8 @@ export default function VendorApprovalPage() {
                               ? uNum === 1
                                 ? 'Unit 1 (Tanjung Pura)'
                                 : uNum === 2
-                                ? 'Unit 2 (Galuh Mas)'
-                                : `Mobil Unit ${uNum}`
+                                  ? 'Unit 2 (Galuh Mas)'
+                                  : `Mobil Unit ${uNum}`
                               : `Mobil Unit ${uNum}`;
 
                             return (
@@ -1442,13 +1439,20 @@ export default function VendorApprovalPage() {
                           b.status === 'confirmed'
                       );
 
-                      const { normalizedBookings } = isMulti
-                        ? normalizeUnitBookings(routeBookings, 6)
-                        : { normalizedBookings: routeBookings };
-
                       const displayVehicle: VehicleType = isMulti
                         ? 'Avanza'
                         : (selectedOrderForMap.vehicle_type as VehicleType);
+
+                      const maxSeats = getMaxSeats(displayVehicle);
+                      const hasSeatIssues = routeBookings.some(
+                        (b, idx) =>
+                          b.seat_number > maxSeats ||
+                          routeBookings.findIndex((x) => x.seat_number === b.seat_number) !== idx
+                      );
+
+                      const { normalizedBookings } = (isMulti || hasSeatIssues)
+                        ? normalizeUnitBookings(routeBookings, maxSeats)
+                        : { normalizedBookings: routeBookings };
 
                       return (
                         <SeatMap
@@ -1462,7 +1466,6 @@ export default function VendorApprovalPage() {
                   </>
                 );
               })()}
-
 
               {/* Passenger List Summary */}
               <div className="mt-4 pt-3 border-t border-slate-200">

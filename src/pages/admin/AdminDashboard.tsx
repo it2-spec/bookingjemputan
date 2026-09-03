@@ -19,6 +19,8 @@ import {
   Check,
   Moon,
   CheckCircle,
+  UserPlus,
+  Trash2,
 } from 'lucide-react';
 
 
@@ -41,6 +43,7 @@ import {
   isBookingClosed,
   normalizeUnitBookings,
 } from '../../lib/vehicleLogic';
+import { ROUTE_SCHEDULES } from '../../lib/routeSchedules';
 
 import { getVehicleIcon } from '../../lib/utils';
 import type { Route, VehicleType, Booking } from '../../lib/types';
@@ -63,6 +66,21 @@ export default function AdminDashboard() {
   const [routeApprovalStatus, setRouteApprovalStatus] = useState<Record<string, 'pending' | 'approved' | 'rejected'>>({}); // route_id -> vendor_approval_status
   const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null; department?: string; driver_type?: 'internal' | 'vendor' | null }[]>([]);
   const [selectedSeatForAdmin, setSelectedSeatForAdmin] = useState<{ seatNumber: number; booking?: Booking } | null>(null);
+
+  // Manual Passenger Booking State (Visual Denah Kursi)
+  const [allEmployees, setAllEmployees] = useState<{
+    id: string;
+    nik: string;
+    name: string;
+    department: string;
+    role: string;
+    assigned_route_id: string | null;
+    default_pickup_point: string | null;
+  }[]>([]);
+  const [manualEmployeeId, setManualEmployeeId] = useState<string>('');
+  const [manualPickupPoint, setManualPickupPoint] = useState<string>('');
+  const [isSubmittingManualBooking, setIsSubmittingManualBooking] = useState(false);
+  const [isCancellingBooking, setIsCancellingBooking] = useState(false);
 
 
   // Modal State for Registering New Driver directly from TomSelect
@@ -280,9 +298,26 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, nik, name, department, role, assigned_route_id, default_pickup_point')
+        .neq('role', 'driver')
+        .order('name', { ascending: true });
+
+      if (!error && data) {
+        setAllEmployees(data as any[]);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch employees:', e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDrivers();
-  }, [fetchDrivers]);
+    fetchEmployees();
+  }, [fetchDrivers, fetchEmployees]);
 
   // Fetch overrides and drivers for selected date
   const fetchDateOverridesAndDrivers = async () => {
@@ -540,6 +575,237 @@ export default function AdminDashboard() {
     }
   };
 
+  // Helper: Get pickup stops for the currently opened route in Visual Seat Map
+  const currentRouteStops = useMemo(() => {
+    if (!selectedRouteForMap) return [];
+    const rName = selectedRouteForMap.route.route_name.toLowerCase();
+    const matched = ROUTE_SCHEDULES.find(
+      (s) =>
+        s.routeName.toLowerCase() === rName ||
+        rName.includes(s.routeName.toLowerCase()) ||
+        s.routeName.toLowerCase().includes(rName)
+    );
+    if (matched && matched.stops.length > 0) {
+      return matched.stops.map((s) => s.name);
+    }
+    const existingStops = Array.from(
+      new Set(
+        bookings
+          .filter((b) => b.route_id === selectedRouteForMap.route.id && b.pickup_point)
+          .map((b) => b.pickup_point!)
+      )
+    );
+    return existingStops.length > 0 ? existingStops : ['Halte Utama'];
+  }, [selectedRouteForMap, bookings]);
+
+  // Helper: Get employees eligible for the currently opened route who haven't booked yet
+  const eligibleEmployees = useMemo(() => {
+    if (!selectedRouteForMap) return [];
+    const rId = selectedRouteForMap.route.id;
+    const isKB = selectedRouteForMap.route.route_name.toLowerCase().includes('karawang barat');
+
+    return allEmployees.filter((emp) => {
+      // Must not already have a confirmed booking on selectedDate
+      const hasBookingToday = bookings.some(
+        (b) => b.employee_id === emp.id && b.status === 'confirmed'
+      );
+      if (hasBookingToday) return false;
+
+      // Must have right to ride this route (assigned_route_id matches, or default KB if null)
+      const isAssigned = emp.assigned_route_id === rId || (!emp.assigned_route_id && isKB);
+      return isAssigned;
+    });
+  }, [allEmployees, selectedRouteForMap, bookings]);
+
+  // Handler: When Admin selects an employee in manual booking dropdown
+  const handleSelectManualEmployee = (empId: string) => {
+    setManualEmployeeId(empId);
+    const emp = allEmployees.find((e) => e.id === empId);
+    if (emp?.default_pickup_point && currentRouteStops.includes(emp.default_pickup_point)) {
+      setManualPickupPoint(emp.default_pickup_point);
+    } else if (emp?.default_pickup_point) {
+      setManualPickupPoint(emp.default_pickup_point);
+    } else if (currentRouteStops.length > 0) {
+      setManualPickupPoint(currentRouteStops[0]);
+    } else {
+      setManualPickupPoint('');
+    }
+  };
+
+  // Handler: Confirm manual booking for the selected empty seat
+  const handleConfirmManualBooking = async () => {
+    if (!selectedRouteForMap || !selectedSeatForAdmin) return;
+    if (!manualEmployeeId) {
+      toast.error('Silakan pilih karyawan terlebih dahulu!');
+      return;
+    }
+    if (!manualPickupPoint.trim()) {
+      toast.error('Silakan pilih titik jemput (halte)!');
+      return;
+    }
+
+    const emp = allEmployees.find((e) => e.id === manualEmployeeId);
+    setIsSubmittingManualBooking(true);
+    try {
+      const isMulti = (selectedRouteForMap.route.unit_count || 1) > 1;
+      const unitNum = isMulti ? adminSelectedUnit : 1;
+
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert({
+          employee_id: manualEmployeeId,
+          route_id: selectedRouteForMap.route.id,
+          departure_date: selectedDate,
+          seat_number: selectedSeatForAdmin.seatNumber,
+          unit_number: unitNum,
+          vehicle_type: selectedRouteForMap.vehicleType,
+          pickup_point: manualPickupPoint.trim(),
+          status: 'confirmed',
+        })
+        .select('*, employee:employees(*), route:routes(*)')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          if (error.message.includes('idx_one_booking_per_day')) {
+            throw new Error('Karyawan ini sudah memiliki booking untuk hari ini.');
+          }
+          if (error.message.includes('idx_unique_seat_per_route_day')) {
+            throw new Error('Kursi ini sudah terisi oleh penumpang lain.');
+          }
+        }
+        throw error;
+      }
+
+      toast.success(`Berhasil mendaftarkan ${emp?.name || 'karyawan'} ke Kursi No. ${selectedSeatForAdmin.seatNumber}! 🎉`);
+      refetch();
+      setManualEmployeeId('');
+      setManualPickupPoint('');
+      setSelectedSeatForAdmin({
+        seatNumber: selectedSeatForAdmin.seatNumber,
+        booking: data as Booking,
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menambahkan penumpang manual');
+    } finally {
+      setIsSubmittingManualBooking(false);
+    }
+  };
+
+  // Handler: Cancel / remove a booking directly from seat map dialog
+  const handleCancelBookingFromMap = async (bookingId: string, passengerName: string) => {
+    if (!window.confirm(`Yakin ingin membatalkan booking kursi untuk ${passengerName}? Kursi ini akan menjadi kosong kembali.`)) {
+      return;
+    }
+
+    setIsCancellingBooking(true);
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+
+      toast.success(`Booking untuk ${passengerName} berhasil dibatalkan. Kursi kini kosong.`);
+      refetch();
+      if (selectedSeatForAdmin) {
+        setSelectedSeatForAdmin({
+          seatNumber: selectedSeatForAdmin.seatNumber,
+          booking: undefined,
+        });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal membatalkan booking');
+    } finally {
+      setIsCancellingBooking(false);
+    }
+  };
+
+  // Handler: Drag and Drop Seat Move or Swap
+  const handleSeatSwap = async (sourceSeat: number, targetSeat: number) => {
+    if (!selectedRouteForMap) return;
+    if (sourceSeat === targetSeat) return;
+
+    const isMulti = (selectedRouteForMap.route.unit_count || 1) > 1;
+    const rawUnitBookings = isMulti
+      ? bookings.filter(
+        (b) =>
+          b.route_id === selectedRouteForMap.route.id &&
+          (b.unit_number || 1) === adminSelectedUnit &&
+          b.status === 'confirmed'
+      )
+      : bookings.filter(
+        (b) => b.route_id === selectedRouteForMap.route.id && b.status === 'confirmed'
+      );
+
+    const { normalizedBookings } = isMulti
+      ? normalizeUnitBookings(rawUnitBookings, 6)
+      : { normalizedBookings: rawUnitBookings };
+
+    const sourceBooking = normalizedBookings.find((b) => b.seat_number === sourceSeat);
+    if (!sourceBooking) {
+      toast.error('Tidak ada penumpang di kursi yang digeser.');
+      return;
+    }
+
+    const targetBooking = normalizedBookings.find((b) => b.seat_number === targetSeat);
+    const sourceName = (sourceBooking as any).employee?.name || 'Penumpang';
+
+    try {
+      if (!targetBooking) {
+        // Target is an EMPTY seat: Move source passenger to targetSeat
+        const { error } = await supabase
+          .from('bookings')
+          .update({ seat_number: targetSeat })
+          .eq('id', sourceBooking.id);
+
+        if (error) throw error;
+        toast.success(`${sourceName} dipindahkan ke Kursi No. ${targetSeat}! 💺`);
+      } else {
+        // Target is an OCCUPIED seat: Swap the two passengers safely
+        const targetName = (targetBooking as any).employee?.name || 'Penumpang';
+
+        // 3-step safe swap to avoid unique constraint collisions in Postgres
+        // 1. Move sourceBooking to temporary seat -999
+        const { error: err1 } = await supabase
+          .from('bookings')
+          .update({ seat_number: -999 })
+          .eq('id', sourceBooking.id);
+        if (err1) throw err1;
+
+        // 2. Move targetBooking to sourceSeat
+        const { error: err2 } = await supabase
+          .from('bookings')
+          .update({ seat_number: sourceSeat })
+          .eq('id', targetBooking.id);
+        if (err2) throw err2;
+
+        // 3. Move sourceBooking to targetSeat
+        const { error: err3 } = await supabase
+          .from('bookings')
+          .update({ seat_number: targetSeat })
+          .eq('id', sourceBooking.id);
+        if (err3) throw err3;
+
+        toast.success(`Posisi ${sourceName} (No. ${sourceSeat}) & ${targetName} (No. ${targetSeat}) berhasil ditukar! 🔄`);
+      }
+
+      refetch();
+      // Keep or update selected seat to targetSeat
+      setSelectedSeatForAdmin({
+        seatNumber: targetSeat,
+        booking: { ...sourceBooking, seat_number: targetSeat },
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal memindahkan atau menukar kursi');
+      refetch();
+    }
+  };
+
 
   const handleSetRouteInvoiceVehicle = async (routeId: string, vehicleType: string) => {
     try {
@@ -648,6 +914,17 @@ export default function AdminDashboard() {
         if (!updErr) updatedCount++;
       }
 
+      await supabase
+        .from('invoice_daily_overrides')
+        .upsert({
+          departure_date: selectedDate,
+          route_id: routeId,
+          daily_vehicle_type: 'Avanza',
+          daily_unit_count: 2,
+          override_vehicle_type: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'departure_date,route_id' });
+
       toast.success(
         `Berhasil split & susun ulang kursi ${updatedCount} penumpang Karawang Barat ke Unit 1 & Unit 2! 🚗✨`
       );
@@ -729,7 +1006,7 @@ export default function AdminDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm text-slate-900">
-                {isClosed ? 'Booking Terkunci (Lewat 20:00 WIB)' : 'Booking Masih Terbuka'}
+                {isClosed ? 'Booking Terkunci (Lewat 19:00 WIB)' : 'Booking Masih Terbuka'}
               </span>
               <Badge variant={isClosed ? 'warning' : 'success'}>
                 {isClosed ? 'Locked' : 'Open'}
@@ -1135,7 +1412,12 @@ export default function AdminDashboard() {
       {/* Visual Seat Map Dialog for Admin */}
       <Dialog
         isOpen={!!selectedRouteForMap}
-        onClose={() => setSelectedRouteForMap(null)}
+        onClose={() => {
+          setSelectedRouteForMap(null);
+          setSelectedSeatForAdmin(null);
+          setManualEmployeeId('');
+          setManualPickupPoint('');
+        }}
         title={`Visual Denah Kursi - ${selectedRouteForMap?.route.route_name || ''}`}
       >
         <div className="space-y-4 py-2">
@@ -1167,7 +1449,12 @@ export default function AdminDashboard() {
                         <button
                           key={uNum}
                           type="button"
-                          onClick={() => setAdminSelectedUnit(uNum)}
+                          onClick={() => {
+                            setAdminSelectedUnit(uNum);
+                            setSelectedSeatForAdmin(null);
+                            setManualEmployeeId('');
+                            setManualPickupPoint('');
+                          }}
                           className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${isSel
                             ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1185,13 +1472,13 @@ export default function AdminDashboard() {
                 const isMulti = (selectedRouteForMap.route.unit_count || 1) > 1;
                 const rawUnitBookings = isMulti
                   ? bookings.filter(
-                      (b) => b.route_id === selectedRouteForMap.route.id &&
-                        (b.unit_number || 1) === adminSelectedUnit &&
-                        b.status === 'confirmed'
-                    )
+                    (b) => b.route_id === selectedRouteForMap.route.id &&
+                      (b.unit_number || 1) === adminSelectedUnit &&
+                      b.status === 'confirmed'
+                  )
                   : bookings.filter(
-                      (b) => b.route_id === selectedRouteForMap.route.id && b.status === 'confirmed'
-                    );
+                    (b) => b.route_id === selectedRouteForMap.route.id && b.status === 'confirmed'
+                  );
 
                 const { normalizedBookings } = isMulti
                   ? normalizeUnitBookings(rawUnitBookings, 6)
@@ -1207,20 +1494,26 @@ export default function AdminDashboard() {
                     bookings={normalizedBookings}
                     selectedSeat={selectedSeatForAdmin?.seatNumber || null}
                     allowBookedClick={true}
+                    allowDragDrop={true}
+                    onSeatSwap={handleSeatSwap}
                     onSeatSelect={(seatNumber) => {
                       const foundBooking = normalizedBookings.find((b) => b.seat_number === seatNumber);
                       setSelectedSeatForAdmin({ seatNumber, booking: foundBooking });
+                      setManualEmployeeId('');
+                      setManualPickupPoint('');
                     }}
                     onSeatClickWithBooking={(seatNumber, bkg) => {
                       const foundBooking = bkg || normalizedBookings.find((b) => b.seat_number === seatNumber);
                       setSelectedSeatForAdmin({ seatNumber, booking: foundBooking });
+                      setManualEmployeeId('');
+                      setManualPickupPoint('');
                     }}
                   />
                 );
               })()}
 
 
-              {/* Selected Seat Passenger Info & Overtime Toggle Panel */}
+              {/* Selected Seat Passenger Info / Manual Booking / Overtime Toggle Panel */}
               {selectedSeatForAdmin?.booking ? (
                 <div className="mt-3 p-3.5 bg-purple-50/90 border border-purple-200 rounded-2xl space-y-2.5 shadow-2xs">
                   <div className="flex items-start justify-between gap-2">
@@ -1239,11 +1532,10 @@ export default function AdminDashboard() {
                       </p>
                     </div>
 
-                    <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold border shrink-0 ${
-                      (selectedSeatForAdmin.booking as any).is_overtime_no_return
+                    <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold border shrink-0 ${(selectedSeatForAdmin.booking as any).is_overtime_no_return
                         ? 'bg-purple-200 text-purple-900 border-purple-300 flex items-center gap-1 shadow-2xs'
                         : 'bg-emerald-100 text-emerald-800 border-emerald-300 flex items-center gap-1'
-                    }`}>
+                      }`}>
                       {(selectedSeatForAdmin.booking as any).is_overtime_no_return ? (
                         <>
                           <Moon className="w-3 h-3" /> Lembur (Off Pulang)
@@ -1256,31 +1548,134 @@ export default function AdminDashboard() {
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleToggleOvertimeFromMap(selectedSeatForAdmin.booking!)}
-                    className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
-                      (selectedSeatForAdmin.booking as any).is_overtime_no_return
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
-                        : 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700'
-                    }`}
-                  >
-                    {(selectedSeatForAdmin.booking as any).is_overtime_no_return ? (
-                      <>
-                        <CheckCircle className="w-4 h-4" />
-                        <span>Kembalikan ke Ikut Pulang Reguler (16:30)</span>
-                      </>
-                    ) : (
-                      <>
-                        <Moon className="w-4 h-4" />
-                        <span>Tandai Lembur (Tidak Ikut Pulang Sore 16:30)</span>
-                      </>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleOvertimeFromMap(selectedSeatForAdmin.booking!)}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${(selectedSeatForAdmin.booking as any).is_overtime_no_return
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                          : 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700'
+                        }`}
+                    >
+                      {(selectedSeatForAdmin.booking as any).is_overtime_no_return ? (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          <span>Kembalikan ke Ikut Pulang Reguler (16:30)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Moon className="w-4 h-4" />
+                          <span>Tandai Lembur (Tidak Pulang Sore 16:30)</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isCancellingBooking}
+                      onClick={() =>
+                        handleCancelBookingFromMap(
+                          selectedSeatForAdmin.booking!.id,
+                          (selectedSeatForAdmin.booking as any).employee?.name || 'Penumpang'
+                        )
+                      }
+                      title="Batalkan / Kosongkan Kursi Ini"
+                      className="py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1 shadow-xs cursor-pointer bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus</span>
+                    </button>
+                  </div>
+                </div>
+              ) : selectedSeatForAdmin ? (
+                /* Empty Seat: Manual Add Passenger Panel */
+                <div className="mt-3 p-3.5 bg-blue-50/90 border border-blue-200 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <UserPlus className="w-4 h-4 text-blue-600" />
+                      <span>Tambah Penumpang ke Kursi No. {selectedSeatForAdmin.seatNumber}</span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Tersedia / Kosong
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600">
+                    Pilih karyawan yang memiliki hak naik rute <strong>{selectedRouteForMap.route.route_name}</strong> untuk didaftarkan ke kursi ini.
+                  </p>
+
+                  <div className="space-y-2.5">
+                    {/* 1. Pilih Karyawan */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Pilih Karyawan Berhak ({eligibleEmployees.length} karyawan tersedia):
+                      </label>
+                      {eligibleEmployees.length === 0 ? (
+                        <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 italic">
+                          Semua karyawan yang berhak naik rute ini sudah memiliki booking untuk tanggal ini.
+                        </div>
+                      ) : (
+                        <TomSelect
+                          value={manualEmployeeId}
+                          onChange={handleSelectManualEmployee}
+                          options={[
+                            { value: '', label: '-- Pilih Karyawan Berhak --' },
+                            ...eligibleEmployees.map((e) => ({
+                              value: e.id,
+                              label: `${e.name} (${e.nik})`,
+                              sublabel: `${e.department}${e.default_pickup_point ? ` • Halte: ${e.default_pickup_point}` : ''}`,
+                            })),
+                          ]}
+                          placeholder="Ketik nama atau NIK karyawan..."
+                        />
+                      )}
+                    </div>
+
+                    {/* 2. Titik Jemput (Halte) */}
+                    {manualEmployeeId && (
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Titik Penjemputan (Halte):
+                        </label>
+                        <select
+                          value={manualPickupPoint}
+                          onChange={(e) => setManualPickupPoint(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium text-slate-900"
+                        >
+                          <option value="">-- Pilih Halte Penjemputan --</option>
+                          {currentRouteStops.map((stop) => (
+                            <option key={stop} value={stop}>
+                              📍 {stop}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
-                  </button>
+
+                    {/* 3. Tombol Submit */}
+                    <button
+                      type="button"
+                      onClick={handleConfirmManualBooking}
+                      disabled={isSubmittingManualBooking || !manualEmployeeId || !manualPickupPoint}
+                      className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 shadow-xs cursor-pointer bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white border-blue-700"
+                    >
+                      {isSubmittingManualBooking ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menyimpan Booking...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Daftarkan ke Kursi No. {selectedSeatForAdmin.seatNumber}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="text-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
-                  👆 <em>Klik pada salah satu kursi penumpang di denah untuk menandai status <strong>Lembur (Off Pulang Sore)</strong>.</em>
+                <div className="text-center p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
+                  👆 <em>Klik salah satu kursi pada denah di atas untuk <strong>mendaftarkan penumpang manual</strong> (kursi kosong) atau <strong>mengatur status lembur / hapus</strong> (kursi terisi).</em>
                 </div>
               )}
 
@@ -1412,11 +1807,10 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setNewDriverType('vendor')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
-                    newDriverType === 'vendor'
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${newDriverType === 'vendor'
                       ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   💳 Supir Sewa Vendor
                   <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
@@ -1426,11 +1820,10 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setNewDriverType('internal')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
-                    newDriverType === 'internal'
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${newDriverType === 'internal'
                       ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   🏢 Supir Internal PT
                   <span className="block text-[10px] font-normal text-slate-500 mt-0.5">

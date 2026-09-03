@@ -2,15 +2,67 @@
 // Vendor Layout — Layout simpel untuk halaman approval vendor
 // ============================================================
 
+import { useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/AuthContext';
 import { LoadingScreen } from '../shared/LoadingScreen';
 import tracerLogo from '../../assets/tracer.png';
 import { LogOut, CheckSquare, Truck } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 export function VendorLayout() {
   const { employee, isLoading, logout } = useAuth();
+
+  useEffect(() => {
+    if (!employee || employee.role !== 'vendor') return;
+
+    // 1. Automatically register push notification subscription for vendor
+    import('../../lib/notificationService').then(({ requestNotificationPermission, subscribeToPush }) => {
+      requestNotificationPermission()
+        .then(() => subscribeToPush(employee.id))
+        .catch(console.warn);
+    });
+
+    // 2. Listen to Realtime vendor-notifications channel
+    const channel = supabase.channel('vendor-notifications');
+    channel
+      .on('broadcast', { event: 'new-notification' }, (payload: any) => {
+        const title = payload.payload?.title || '📋 Konfirmasi Jemputan Besok';
+        const msg = payload.payload?.message || 'Pemesanan jemputan untuk besok, silahkan untuk dikonfirmasi';
+        
+        toast(() => (
+          <div className="flex items-start gap-2.5 py-1">
+            <span className="text-2xl shrink-0">🔔</span>
+            <div className="space-y-0.5">
+              <p className="font-bold text-xs text-slate-900">{title}</p>
+              <p className="text-xs text-slate-600">{msg}</p>
+            </div>
+          </div>
+        ), {
+          duration: 10000,
+          style: {
+            border: '2px solid #3b82f6',
+            borderRadius: '16px',
+            padding: '12px 16px',
+          },
+        });
+
+        // Native browser desktop notification if permitted
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(title, {
+            body: msg,
+            icon: tracerLogo,
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employee]);
 
 
   if (isLoading) return <LoadingScreen />;

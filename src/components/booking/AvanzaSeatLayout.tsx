@@ -13,11 +13,63 @@ import type { SeatStatus } from '../../lib/types';
 interface AvanzaSeatLayoutProps {
   seats: Map<number, { status: SeatStatus; bookedBy?: string; isOvertime?: boolean }>;
   onSeatClick: (seatNumber: number) => void;
+  allowDragDrop?: boolean;
+  draggingSeat?: number | null;
+  dragOverSeat?: number | null;
+  onDragStart?: (seatNumber: number, e: React.DragEvent) => void;
+  onDragOver?: (seatNumber: number, e: React.DragEvent) => void;
+  onDragLeave?: (seatNumber: number, e: React.DragEvent) => void;
+  onDrop?: (seatNumber: number, e: React.DragEvent) => void;
+  onTouchStart?: (seatNumber: number, e: React.TouchEvent) => void;
+  onTouchMove?: (seatNumber: number, e: React.TouchEvent) => void;
+  onTouchEnd?: (seatNumber: number, e: React.TouchEvent) => void;
 }
 
-export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) {
+export function AvanzaSeatLayout({
+  seats,
+  onSeatClick,
+  allowDragDrop = false,
+  draggingSeat = null,
+  dragOverSeat = null,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+}: AvanzaSeatLayoutProps) {
   const getSeat = (num: number) =>
     seats.get(num) || { status: 'available' as SeatStatus };
+
+  const renderSeat = (num: number) => {
+    const seatInfo = getSeat(num);
+    const hasPassenger = Boolean(seatInfo.bookedBy) || seatInfo.status === 'booked' || seatInfo.status === 'selected';
+    const isDraggable = Boolean(allowDragDrop && hasPassenger);
+    const isDragging = draggingSeat === num;
+    const isDragOver = dragOverSeat === num && draggingSeat !== num;
+
+    return (
+      <SeatButton
+        seatNumber={num}
+        status={seatInfo.status}
+        bookedByName={seatInfo.bookedBy}
+        isOvertime={seatInfo.isOvertime}
+        onClick={() => onSeatClick(num)}
+        size="sm"
+        isDraggable={isDraggable}
+        isDragging={isDragging}
+        isDragOver={isDragOver}
+        onDragStart={(e) => onDragStart?.(num, e)}
+        onDragOver={(e) => onDragOver?.(num, e)}
+        onDragLeave={(e) => onDragLeave?.(num, e)}
+        onDrop={(e) => onDrop?.(num, e)}
+        onTouchStart={(e) => onTouchStart?.(num, e)}
+        onTouchMove={(e) => onTouchMove?.(num, e)}
+        onTouchEnd={(e) => onTouchEnd?.(num, e)}
+      />
+    );
+  };
 
   return (
     <motion.div
@@ -37,14 +89,7 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
 
         {/* Row 1: [1, null, DRIVER] */}
         <div className="grid grid-cols-3 gap-3 items-center mb-4">
-          <SeatButton
-            seatNumber={1}
-            status={getSeat(1).status}
-            bookedByName={getSeat(1).bookedBy}
-            isOvertime={getSeat(1).isOvertime}
-            onClick={() => onSeatClick(1)}
-            size="sm"
-          />
+          {renderSeat(1)}
           <div className="w-11 h-11" />
           <div className="w-11 h-11 rounded-[var(--radius-seat)] bg-slate-200 border-2 border-slate-300 flex flex-col items-center justify-center">
             <span className="text-xs">🚗</span>
@@ -54,50 +99,15 @@ export function AvanzaSeatLayout({ seats, onSeatClick }: AvanzaSeatLayoutProps) 
 
         {/* Row 2: [2, 3, 4] */}
         <div className="grid grid-cols-3 gap-3 items-center mb-4">
-          <SeatButton
-            seatNumber={2}
-            status={getSeat(2).status}
-            bookedByName={getSeat(2).bookedBy}
-            isOvertime={getSeat(2).isOvertime}
-            onClick={() => onSeatClick(2)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={3}
-            status={getSeat(3).status}
-            bookedByName={getSeat(3).bookedBy}
-            isOvertime={getSeat(3).isOvertime}
-            onClick={() => onSeatClick(3)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={4}
-            status={getSeat(4).status}
-            bookedByName={getSeat(4).bookedBy}
-            isOvertime={getSeat(4).isOvertime}
-            onClick={() => onSeatClick(4)}
-            size="sm"
-          />
+          {renderSeat(2)}
+          {renderSeat(3)}
+          {renderSeat(4)}
         </div>
 
         {/* Row 3: [5, 6, null] */}
         <div className="grid grid-cols-3 gap-3 items-center">
-          <SeatButton
-            seatNumber={5}
-            status={getSeat(5).status}
-            bookedByName={getSeat(5).bookedBy}
-            isOvertime={getSeat(5).isOvertime}
-            onClick={() => onSeatClick(5)}
-            size="sm"
-          />
-          <SeatButton
-            seatNumber={6}
-            status={getSeat(6).status}
-            bookedByName={getSeat(6).bookedBy}
-            isOvertime={getSeat(6).isOvertime}
-            onClick={() => onSeatClick(6)}
-            size="sm"
-          />
+          {renderSeat(5)}
+          {renderSeat(6)}
           <div className="w-11 h-11" />
         </div>
       </div>

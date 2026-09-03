@@ -3,7 +3,7 @@ import { getVehicleType } from '../../lib/vehicleLogic';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Route, VehicleType } from '../../lib/types';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import toast from 'react-hot-toast';
 import {
   FileText,
@@ -109,6 +109,7 @@ export default function SuperAdminInvoice() {
   const [dateTo, setDateTo] = useState(getTodayStr());
 
   const [rekapData, setRekapData] = useState<DayRecap[]>([]);
+  const [rawBookings, setRawBookings] = useState<any[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [prices, setPrices] = useState<RouteVehiclePrice[]>([]);
   const [overrides, setOverrides] = useState<InvoiceDailyOverride[]>([]);
@@ -180,7 +181,7 @@ export default function SuperAdminInvoice() {
       if (latestOverrides) setOverrides(latestOverrides);
       if (latestPrices) setPrices(latestPrices);
 
-      // 2. Query bookings
+      // 2. Query bookings (termasuk employee dan departure_time untuk export Excel)
       const { data: bookings, error } = await supabase
         .from('bookings')
         .select(`
@@ -189,7 +190,9 @@ export default function SuperAdminInvoice() {
           route_id,
           vehicle_type,
           status,
-          route:routes(id, route_name)
+          pickup_point,
+          employee:employees(id, name, department),
+          route:routes(id, route_name, departure_time)
         `)
         .gte('departure_date', dateFrom)
         .lte('departure_date', dateTo)
@@ -197,6 +200,7 @@ export default function SuperAdminInvoice() {
         .order('departure_date', { ascending: true });
 
       if (error) throw error;
+      setRawBookings(bookings as any[] || []);
 
       if (!bookings || bookings.length === 0) {
         setRekapData([]);
@@ -414,76 +418,358 @@ export default function SuperAdminInvoice() {
   );
 
 
-  // Export Excel
-  const handleExportExcel = () => {
+  // Hari libur nasional Indonesia 2025-2026 (YYYY-MM-DD)
+  const NATIONAL_HOLIDAYS = new Set([
+    // 2025
+    '2025-01-01','2025-01-27','2025-01-28','2025-01-29',
+    '2025-01-30','2025-01-31','2025-03-28','2025-03-29',
+    '2025-03-30','2025-03-31','2025-04-01','2025-04-02',
+    '2025-04-18','2025-05-01','2025-05-12','2025-05-13',
+    '2025-05-29','2025-06-01','2025-06-06','2025-06-09',
+    '2025-08-17','2025-09-05','2025-10-02','2025-12-25',
+    '2025-12-26',
+    // 2026
+    '2026-01-01', // Tahun Baru Masehi
+    '2026-01-16', // Isra Mi'raj
+    '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', // Tahun Baru Imlek & Cuti
+    '2026-03-19', '2026-03-20', '2026-03-21', '2026-03-22', // Idul Fitri / Nyepi
+    '2026-04-02', '2026-04-03', // Wafat Isa Almasih / Paskah
+    '2026-05-01', // Hari Buruh
+    '2026-05-14', // Kenaikan Isa Almasih
+    '2026-05-19', // Hari Raya Waisak
+    '2026-05-25', // Cuti Bersama
+    '2026-06-01', // Hari Lahir Pancasila
+    '2026-06-26', // Idul Adha
+    '2026-07-16', // 1 Muharam
+    '2026-08-17', // HUT Kemerdekaan RI
+    '2026-08-25', // Maulid Nabi Muhammad SAW
+    '2026-12-24', '2026-12-25', // Hari Raya Natal & Cuti
+  ]);
+
+  const isRedDay = (dateStr: string): boolean => {
+    const d = new Date(dateStr);
+    const dow = d.getDay(); // 0=Sun, 6=Sat
+    return dow === 0 || dow === 6 || NATIONAL_HOLIDAYS.has(dateStr);
+  };
+
+  // Export Excel — 2 Sheet: Rekap Invoice + Rekap Per Rute (dengan styling, merge cell & number format)
+  const handleExportExcel = async () => {
     if (rekapData.length === 0) {
       toast.error('Tidak ada data rekap untuk di-export');
       return;
     }
 
-    const rows: any[] = [];
-    rows.push({ 'Rekap Invoice Armada Shuttle': `Periode: ${dateFrom} s/d ${dateTo}` });
-    rows.push({});
+    const RETURN_TIME = '16:30';
+    const COMPANY_NAME = 'PT. SAKAE RIKEN INDONESIA';
 
-    rekapData.forEach((day) => {
-      day.routes.forEach((route, i) => {
-        const approvalLabel =
-          route.approvalStatus === 'approved' ? 'Disetujui Vendor' :
-          route.approvalStatus === 'rejected' ? 'Ditolak Vendor' :
-          'Menunggu Persetujuan';
+    // Border style tipis untuk seluruh sel tabel
+    const THIN_BORDER: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } },
+    };
 
-        rows.push({
-          Tanggal: i === 0 ? day.date : '',
-          Rute: route.routeName,
-          Armada: route.vehicleType,
-          Penumpang: route.passengerCount,
-          'Status Tagihan': route.approvalStatus === 'approved' && route.isBillable ? 'Sewa Vendor' : !route.isBillable ? 'Driver Sendiri (Rp 0)' : 'Sewa Vendor',
-          'Status Vendor': approvalLabel,
-          'Harga/Hari (Rp)': route.approvalStatus === 'approved' ? route.price : 0,
-          'Subtotal (Rp)': route.subtotal,
-        });
-      });
-      rows.push({
-        Tanggal: '',
-        Rute: '',
-        Armada: '',
-        Penumpang: '',
-        'Status Tagihan': '',
-        'Status Vendor': '',
-        'Harga/Hari (Rp)': 'Sub-Total Hari:',
-        'Subtotal (Rp)': day.dayTotal,
-      });
-      rows.push({});
-    });
-
-    rows.push({
-      Tanggal: '',
-      Rute: '',
-      Armada: '',
-      Penumpang: '',
-      'Status Tagihan': '',
-      'Status Vendor': '',
-      'Harga/Hari (Rp)': 'GRAND TOTAL:',
-      'Subtotal (Rp)': grandTotal,
-    });
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 14 },
-      { wch: 20 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 22 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 18 },
+    // ============================================================
+    // SHEET 1: Rekap Invoice (1 baris per rute per tanggal)
+    // ============================================================
+    const headerRow = [
+      'Tanggal',
+      'Antar Masuk',
+      'Antar Pulang',
+      'Rit',
+      'Rute',
+      'Jenis Kendaraan',
+      'Rute & Jenis Kendaraan',
+      'Nama Karyawan',
+      'Jumlah Karyawan',
+      'Keterangan',
+      'Harga',
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Invoice');
-    XLSX.writeFile(wb, `Rekap_Invoice_Armada_${dateFrom}_sd_${dateTo}.xlsx`);
+    const dataRows: (string | number)[][] = [];
+
+    rekapData.forEach((day) => {
+      day.routes.forEach((route) => {
+        // Format tanggal: dd/mm/yyyy
+        const [y, m, d] = day.date.split('-');
+        const tanggal = `${(d || '').padStart(2, '0')}/${(m || '').padStart(2, '0')}/${y}`;
+
+        // Ambil nama semua penumpang rute ini pada tanggal ini, gabung dengan koma
+        const passengerNames = rawBookings
+          .filter((b) => b.departure_date === day.date && b.route_id === route.routeId)
+          .map((b) => b.employee?.name?.trim())
+          .filter(Boolean);
+
+        const matchedRoute = routes.find((r) => r.id === route.routeId);
+        const antarMasuk = matchedRoute?.departure_time ? matchedRoute.departure_time.slice(0, 5) : '06:00';
+        const antarPulang = RETURN_TIME;
+        const rit = 1;
+        const rute = route.routeName;
+        const jenisKendaraan = route.vehicleType;
+        const ruteDanJenis = `${rute} - ${jenisKendaraan}`;
+        const namaKaryawan = passengerNames.length > 0 ? passengerNames.join(', ') : '-';
+        // Count berdasarkan delimiter koma
+        const jumlahKaryawan = passengerNames.length;
+        const keterangan = route.note ?? (route.approvalStatus === 'approved' && route.isBillable ? 'Sewa Vendor' : !route.isBillable ? 'Driver Sendiri (Rp 0)' : 'Menunggu Persetujuan');
+        const harga = route.subtotal;
+
+        dataRows.push([
+          tanggal,
+          antarMasuk,
+          antarPulang,
+          rit,
+          rute,
+          jenisKendaraan,
+          ruteDanJenis,
+          namaKaryawan,
+          jumlahKaryawan,
+          keterangan,
+          harga,
+        ]);
+      });
+    });
+
+    // ============================================================
+    // SHEET 2: Rekap Per Rute (ExcelJS — full cell styling & merge)
+    // ============================================================
+
+    // Semua kombinasi "Rute - Jenis Kendaraan" dari tabel prices
+    const VEHICLE_ORDER: VehicleType[] = ['Avanza', 'Elf Short', 'Elf Long'];
+    const ruteKombinasi: string[] = [];
+    const hargaPerKombinasi: Record<string, number> = {};
+
+    const sortedRoutes = [...routes].sort((a, b) => a.route_name.localeCompare(b.route_name));
+    sortedRoutes.forEach((r) => {
+      VEHICLE_ORDER.forEach((vt) => {
+        const priceEntry = prices.find((p) => p.route_id === r.id && p.vehicle_type === vt);
+        if (priceEntry) {
+          const key = `${r.route_name} - ${vt}`;
+          ruteKombinasi.push(key);
+          hargaPerKombinasi[key] = priceEntry.price_per_day;
+        }
+      });
+    });
+
+    // Build lookup: date+routeKombinasi -> route recap
+    const pivotLookup: Record<string, RouteRecap> = {};
+    rekapData.forEach((day) => {
+      day.routes.forEach((route) => {
+        const key = `${day.date}__${route.routeName} - ${route.vehicleType}`;
+        pivotLookup[key] = route;
+      });
+    });
+
+    // Generate semua tanggal kalender dalam rentang dateFrom s/d dateTo
+    const allCalendarDates: string[] = [];
+    const cursor = new Date(dateFrom);
+    const endDate = new Date(dateTo);
+    while (cursor <= endDate) {
+      const y = cursor.getFullYear();
+      const mm = String(cursor.getMonth() + 1).padStart(2, '0');
+      const dd = String(cursor.getDate()).padStart(2, '0');
+      allCalendarDates.push(`${y}-${mm}-${dd}`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Total Rit per kombinasi
+    const totalRitPerKombinasi: number[] = ruteKombinasi.map((k) =>
+      allCalendarDates.reduce((sum, date) => sum + (pivotLookup[`${date}__${k}`] ? 1 : 0), 0)
+    );
+
+    // Total Rp per kombinasi
+    const totalRpPerKombinasi: number[] = ruteKombinasi.map((k, i) =>
+      totalRitPerKombinasi[i] * (hargaPerKombinasi[k] ?? 0)
+    );
+    const subTotal = totalRpPerKombinasi.reduce((s, v) => s + v, 0);
+
+    const firstRoute = routes[0];
+    const jamMasuk = firstRoute?.departure_time ? firstRoute.departure_time.slice(0, 5) : '07:30';
+    const jamKerja = `${jamMasuk} - ${RETURN_TIME} (HARI KERJA)`;
+
+    // --- ExcelJS workbook ---
+    const wb2 = new ExcelJS.Workbook();
+
+    // Format angka: 2 desimal, dan nilai 0 ditampilkan sebagai tanda strip (-)
+    const NUMBER_FORMAT_DASH_ZERO = '#,##0.00;-#,##0.00;"-"';
+
+    // ============================================================
+    // BUILD SHEET 1 (Rekap Invoice)
+    // ============================================================
+    const ejSheet1 = wb2.addWorksheet('Rekap Invoice');
+    ejSheet1.columns = [
+      { width: 14 }, { width: 13 }, { width: 13 }, { width: 6 },
+      { width: 22 }, { width: 18 }, { width: 30 }, { width: 50 },
+      { width: 16 }, { width: 32 }, { width: 18 },
+    ];
+
+    ejSheet1.addRow([`Rekap Invoice Armada Shuttle — Periode: ${dateFrom} s/d ${dateTo}`]).font = { bold: true };
+    ejSheet1.addRow([]); // baris kosong
+
+    const s1Header = ejSheet1.addRow(headerRow);
+    s1Header.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = THIN_BORDER;
+    });
+
+    dataRows.forEach((rowValues) => {
+      const row = ejSheet1.addRow(rowValues);
+      row.eachCell((cell, colNum) => {
+        cell.border = THIN_BORDER;
+        if (colNum === 1 || colNum === 2 || colNum === 3 || colNum === 4 || colNum === 9) {
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        }
+        // Format Harga kolom 11: 2 decimal, 0 -> (-)
+        if (colNum === 11 && typeof cell.value === 'number') {
+          cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        }
+      });
+    });
+
+    // ============================================================
+    // BUILD SHEET 2 (Rekap Per Rute)
+    // ============================================================
+    const ejSheet2 = wb2.addWorksheet('Rekap Per Rute');
+    const totalCols = 1 + ruteKombinasi.length;
+    const colWidths = [14, ...ruteKombinasi.map(() => 22)];
+    ejSheet2.columns = colWidths.map((w) => ({ width: w }));
+
+    // Red fill for holidays/weekends
+    const RED_FILL: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFF0000' },
+    };
+    const RED_FONT: Partial<ExcelJS.Font> = { color: { argb: 'FFFFFFFF' }, bold: true };
+    const BOLD_FONT: Partial<ExcelJS.Font> = { bold: true };
+
+    // Header rows (baris 1-4)
+    ejSheet2.addRow([COMPANY_NAME]).font = BOLD_FONT;
+    ejSheet2.addRow([`REKAPAN PENGGUNAAN MOBIL KFH REGULER ${dateFrom} s/d ${dateTo} VIA NON TOLL`]);
+    ejSheet2.addRow([jamKerja]);
+    ejSheet2.addRow([]); // baris kosong
+
+    // Sub-header Row 5: TANGGAL | RUTE
+    const rh1 = ejSheet2.addRow(['TANGGAL', 'RUTE', ...Array(ruteKombinasi.length - 1).fill('')]);
+    rh1.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = BOLD_FONT;
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = THIN_BORDER;
+    });
+
+    // Sub-header Row 6: kombinasi rute
+    const rh2 = ejSheet2.addRow(['', ...ruteKombinasi]);
+    rh2.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = BOLD_FONT;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = THIN_BORDER;
+    });
+
+    // Merge Header Cells
+    ejSheet2.mergeCells(5, 1, 6, 1); // TANGGAL (A5:A6)
+    if (totalCols >= 2) {
+      ejSheet2.mergeCells(5, 2, 5, totalCols); // RUTE (B5:endCol5)
+    }
+
+    // Data rows: tanggal kalender
+    allCalendarDates.forEach((date) => {
+      const [y, m, d] = date.split('-');
+      const tanggalFmt = `${(d || '').padStart(2, '0')}/${(m || '').padStart(2, '0')}/${y}`;
+      const values: (string | number)[] = [tanggalFmt];
+      ruteKombinasi.forEach((k) => {
+        values.push(pivotLookup[`${date}__${k}`] ? 1 : 0);
+      });
+      const row = ejSheet2.addRow(values);
+      const isRed = isRedDay(date);
+
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        cell.border = THIN_BORDER;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (colNum > 1 && typeof cell.value === 'number') {
+          cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+        }
+        if (isRed) {
+          cell.fill = RED_FILL;
+          cell.font = RED_FONT;
+        }
+      });
+    });
+
+    // Total Rit row
+    const trRow = ejSheet2.addRow(['Total Rit', ...totalRitPerKombinasi]);
+    trRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.font = BOLD_FONT;
+      cell.border = THIN_BORDER;
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      if (colNum > 1 && typeof cell.value === 'number') {
+        cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+      }
+    });
+
+    // Harga Per Rit row
+    const hprRow = ejSheet2.addRow(['Harga Per Rit', ...ruteKombinasi.map((k) => hargaPerKombinasi[k] ?? 0)]);
+    hprRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.font = BOLD_FONT;
+      cell.border = THIN_BORDER;
+      if (colNum > 1 && typeof cell.value === 'number') {
+        cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      } else {
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      }
+    });
+
+    // Total Rp row
+    const tRpRow = ejSheet2.addRow(['Total Rp', ...totalRpPerKombinasi]);
+    tRpRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.font = BOLD_FONT;
+      cell.border = THIN_BORDER;
+      if (colNum > 1 && typeof cell.value === 'number') {
+        cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      } else {
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      }
+    });
+
+    // Sub Total row
+    const subTotalRowNum = 6 + allCalendarDates.length + 4;
+    const stRow = ejSheet2.addRow(['Sub Total', subTotal]);
+    stRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.font = BOLD_FONT;
+      cell.border = THIN_BORDER;
+      if (colNum === 2 && typeof cell.value === 'number') {
+        cell.numFmt = NUMBER_FORMAT_DASH_ZERO;
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      } else {
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      }
+    });
+
+
+    // Merge Sub Total (B[row]:endCol[row])
+    if (totalCols >= 2) {
+      ejSheet2.mergeCells(subTotalRowNum, 2, subTotalRowNum, totalCols);
+    }
+
+    // Write to buffer and trigger download
+    const buffer = await wb2.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Rekap_Invoice_Armada_${dateFrom}_sd_${dateTo}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
     toast.success('File Excel berhasil didownload! 📄');
   };
+
+
+
+
 
 
   const handlePrint = () => {

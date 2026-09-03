@@ -42,6 +42,7 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB (exceljs adds ~1MB)
       },
       devOptions: {
         enabled: true,
