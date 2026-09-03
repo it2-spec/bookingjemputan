@@ -56,6 +56,9 @@ interface DailyRouteOrder {
   vehicle_type: VehicleType | string;
   unit_count: number;
   is_billable: boolean;
+  vendor_units: number[];
+  internal_units: number[];
+  unit_sources?: Record<string, boolean> | null;
   vendor_approval_status: ApprovalStatus;
   vendor_approved_at?: string | null;
   vendor_approval_note?: string | null;
@@ -302,6 +305,9 @@ export default function VendorApprovalPage() {
           departure_date,
           route_id,
           is_billable,
+          is_billable_unit2,
+          is_billable_unit3,
+          unit_sources,
           vendor_approval_status,
           vendor_approved_at,
           vendor_approval_note,
@@ -358,6 +364,33 @@ export default function VendorApprovalPage() {
         const autoVehicleType = getVehicleType(info.count, dailyManualType);
         const vehicleType = override?.override_vehicle_type || autoVehicleType;
 
+        // Determine which units are Sewa Vendor vs Driver Internal PT
+        const isUnitBillable = (u: number): boolean => {
+          if (override?.unit_sources && override.unit_sources[String(u)] !== undefined) {
+            return Boolean(override.unit_sources[String(u)]);
+          }
+          if (u === 1) return override?.is_billable ?? true;
+          if (u === 2) return override?.is_billable_unit2 ?? true;
+          if (u === 3) return override?.is_billable_unit3 ?? true;
+          return true;
+        };
+
+        const vendorUnits: number[] = [];
+        const internalUnits: number[] = [];
+        for (let u = 1; u <= unitCount; u++) {
+          if (isUnitBillable(u)) {
+            vendorUnits.push(u);
+          } else {
+            internalUnits.push(u);
+          }
+        }
+
+        // CRITICAL: If ALL units in this route use internal driver (0 vendor units),
+        // it does NOT belong to vendor and does not show up in Vendor page!
+        if (vendorUnits.length === 0) {
+          return;
+        }
+
         result.push({
           departure_date: date,
           route_id: routeId,
@@ -366,7 +399,10 @@ export default function VendorApprovalPage() {
           passenger_count: info.count,
           vehicle_type: vehicleType,
           unit_count: unitCount,
-          is_billable: override?.is_billable ?? true,
+          is_billable: vendorUnits.length > 0,
+          vendor_units: vendorUnits,
+          internal_units: internalUnits,
+          unit_sources: override?.unit_sources || null,
           vendor_approval_status: override?.vendor_approval_status ?? 'pending',
           vendor_approved_at: override?.vendor_approved_at ?? null,
           vendor_approval_note: override?.vendor_approval_note ?? null,
@@ -471,16 +507,23 @@ export default function VendorApprovalPage() {
         });
       }
 
-      return availableDrivers.map((d) => {
+      // Filter driver vendor saja: Driver internal PT tidak boleh muncul dalam pilihan vendor
+      const vendorDrivers = availableDrivers.filter((d) => {
+        if (d.driver_type === 'internal') return false;
+        const dept = (d.department || '').toLowerCase();
+        const name = d.name.toLowerCase();
+        if (dept.includes('internal') || name.includes('internal')) return false;
+        return true;
+      });
+
+      return vendorDrivers.map((d) => {
         const isBusy = busyDriverMap.has(d.id);
         const busyLocation = busyDriverMap.get(d.id);
-        const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
-        const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
 
         if (isBusy) {
           return {
             value: d.id,
-            label: `👨‍✈️ ${d.name} ${typeTag} 🚫 (Sudah di ${busyLocation})`,
+            label: `👨‍✈️ ${d.name} 🚫 (Sudah di ${busyLocation})`,
             sublabel: `🚫 Sudah bertugas di: ${busyLocation}`,
             disabled: true,
           };
@@ -488,7 +531,7 @@ export default function VendorApprovalPage() {
 
         return {
           value: d.id,
-          label: `👨‍✈️ ${d.name} ${typeTag}`,
+          label: `👨‍✈️ ${d.name}`,
           sublabel: d.phone ? `No. Telp / WA: ${d.phone}` : undefined,
           disabled: false,
         };
@@ -515,20 +558,38 @@ export default function VendorApprovalPage() {
     if (!singleApproveModal) return;
     const { order, unitDrivers, isEditingDriverOnly } = singleApproveModal;
 
-    // 1. Validasi: Wajib pilih supir untuk semua unit
-    const uCount = order.unit_count || 1;
-    for (let u = 1; u <= uCount; u++) {
+    // 1. Validasi: Wajib pilih supir untuk semua unit vendor
+    const vUnits = order.vendor_units || [1];
+    for (const u of vUnits) {
       if (!unitDrivers[u]) {
-        toast.error(`Harap pilih supir untuk Unit ${u} terlebih dahulu!`, { icon: '⚠️' });
+        const isKB = order.route_name.toLowerCase().includes('karawang barat');
+        const unitLabel = isKB ? (u === 1 ? 'Unit 1 (Tanjung Pura)' : 'Unit 2 (Galuh Mas)') : `Unit ${u}`;
+        toast.error(`Harap pilih supir untuk ${unitLabel} terlebih dahulu!`, { icon: '⚠️' });
         return;
       }
     }
 
     // 2. Validasi: Supir tidak boleh sama antar unit dalam rute ini
-    const selectedDrvIds = Object.values(unitDrivers).filter(Boolean);
+    const selectedDrvIds = vUnits.map((u) => unitDrivers[u]).filter(Boolean);
     if (new Set(selectedDrvIds).size !== selectedDrvIds.length) {
       toast.error('Supir tidak boleh sama untuk unit mobil yang berbeda!', { icon: '⚠️' });
       return;
+    }
+
+    // 2b. Validasi: Supir yang dipilih vendor tidak boleh supir internal PT
+    for (const drvId of selectedDrvIds) {
+      const drvObj = availableDrivers.find((d) => d.id === drvId);
+      const isInternal =
+        drvObj?.driver_type === 'internal' ||
+        (!drvObj?.driver_type &&
+          ((drvObj?.department || '').toLowerCase().includes('internal') ||
+            (drvObj?.name || '').toLowerCase().includes('internal')));
+      if (isInternal) {
+        toast.error(`Supir "${drvObj?.name}" adalah Driver Internal PT dan tidak dapat ditugaskan oleh Vendor!`, {
+          icon: '⚠️',
+        });
+        return;
+      }
     }
 
     // 3. Validasi: Supir tidak boleh sudah bertugas di rute lain yang SUDAH DISETUJUI pada tanggal yang sama
@@ -553,15 +614,20 @@ export default function VendorApprovalPage() {
       }
     }
 
-    const currentUnit1 = unitDrivers[1] || null;
-    const currentUnit2 = unitDrivers[2] || null;
-    const currentUnit3 = unitDrivers[3] || null;
-
-    const driverAssignments = {
-      '1': currentUnit1,
-      '2': currentUnit2,
-      '3': currentUnit3,
+    // Merge existing driver assignments so internal drivers set by Admin are preserved
+    const existingAssignments = (order.driver_assignments || {}) as Record<string, string | null>;
+    const mergedAssignments: Record<string, string | null> = {
+      '1': order.assigned_driver_id || existingAssignments['1'] || null,
+      '2': order.assigned_driver_id_unit2 || existingAssignments['2'] || null,
+      '3': order.assigned_driver_id_unit3 || existingAssignments['3'] || null,
     };
+    for (const u of vUnits) {
+      mergedAssignments[String(u)] = unitDrivers[u] || null;
+    }
+
+    const currentUnit1 = mergedAssignments['1'];
+    const currentUnit2 = mergedAssignments['2'];
+    const currentUnit3 = mergedAssignments['3'];
 
     const key = `${order.departure_date}_${order.route_id}`;
     setActionLoading(key);
@@ -569,7 +635,6 @@ export default function VendorApprovalPage() {
       const payload: any = {
         departure_date: order.departure_date,
         route_id: order.route_id,
-        is_billable: true,
         vendor_approval_status: 'approved',
         vendor_approved_at: order.vendor_approved_at || new Date().toISOString(),
         vendor_approved_by: employee?.id ?? null,
@@ -577,7 +642,7 @@ export default function VendorApprovalPage() {
         assigned_driver_id: currentUnit1,
         assigned_driver_id_unit2: currentUnit2,
         assigned_driver_id_unit3: currentUnit3,
-        driver_assignments: driverAssignments,
+        driver_assignments: mergedAssignments,
         updated_at: new Date().toISOString(),
       };
 
@@ -627,10 +692,10 @@ export default function VendorApprovalPage() {
     if (!bulkApproveModal) return;
     const { date, orders: bulkOrders, routeDrivers } = bulkApproveModal;
 
-    // 1. Validasi: Cek apakah semua supir di semua unit rute sudah terisi
+    // 1. Validasi: Cek apakah semua supir di unit vendor sudah terisi
     for (const order of bulkOrders) {
-      const uCount = order.unit_count || 1;
-      for (let u = 1; u <= uCount; u++) {
+      const vUnits = order.vendor_units || [1];
+      for (const u of vUnits) {
         if (!routeDrivers[order.route_id]?.[u]) {
           const isKB = order.route_name.toLowerCase().includes('karawang barat');
           const unitName = isKB ? (u === 1 ? 'Unit 1 Tanjung Pura' : 'Unit 2 Galuh Mas') : `Unit ${u}`;
@@ -643,12 +708,25 @@ export default function VendorApprovalPage() {
     // 2. Validasi: Supir hanya boleh 1 kali dipakai dalam tanggal yang sama (tidak boleh ganda)
     const driverUsageMap = new Map<string, string>(); // driverId -> routeName & unit
     for (const order of bulkOrders) {
-      const uCount = order.unit_count || 1;
-      for (let u = 1; u <= uCount; u++) {
+      const vUnits = order.vendor_units || [1];
+      for (const u of vUnits) {
         const drvId = routeDrivers[order.route_id]?.[u];
         if (drvId) {
+          const drvObj = availableDrivers.find((d) => d.id === drvId);
+          const isInternal =
+            drvObj?.driver_type === 'internal' ||
+            (!drvObj?.driver_type &&
+              ((drvObj?.department || '').toLowerCase().includes('internal') ||
+                (drvObj?.name || '').toLowerCase().includes('internal')));
+          if (isInternal) {
+            toast.error(`Supir "${drvObj?.name}" adalah Driver Internal PT dan tidak dapat ditugaskan oleh Vendor!`, {
+              icon: '⚠️',
+            });
+            return;
+          }
+
           const isKB = order.route_name.toLowerCase().includes('karawang barat');
-          const unitName = uCount > 1 ? ` (${isKB ? (u === 1 ? 'Unit 1 Tanjung Pura' : 'Unit 2 Galuh Mas') : `Unit ${u}`})` : '';
+          const unitName = order.unit_count > 1 ? ` (${isKB ? (u === 1 ? 'Unit 1 Tanjung Pura' : 'Unit 2 Galuh Mas') : `Unit ${u}`})` : '';
           const currentLoc = `${order.route_name}${unitName}`;
 
           if (driverUsageMap.has(drvId)) {
@@ -671,7 +749,6 @@ export default function VendorApprovalPage() {
     );
     for (const drvId of driverUsageMap.keys()) {
       for (const oo of otherOrders) {
-
         if (
           oo.assigned_driver_id === drvId ||
           oo.assigned_driver_id_unit2 === drvId ||
@@ -691,14 +768,26 @@ export default function VendorApprovalPage() {
     try {
       const upserts = bulkOrders.map((o) => {
         const uDrivers = routeDrivers[o.route_id] || {};
-        const currentUnit1 = uDrivers[1] || null;
-        const currentUnit2 = uDrivers[2] || null;
-        const currentUnit3 = uDrivers[3] || null;
+        const existingAssignments = (o.driver_assignments || {}) as Record<string, string | null>;
+        const mergedAssignments: Record<string, string | null> = {
+          '1': o.assigned_driver_id || existingAssignments['1'] || null,
+          '2': o.assigned_driver_id_unit2 || existingAssignments['2'] || null,
+          '3': o.assigned_driver_id_unit3 || existingAssignments['3'] || null,
+        };
+        const vUnits = o.vendor_units || [1];
+        for (const u of vUnits) {
+          if (uDrivers[u]) {
+            mergedAssignments[String(u)] = uDrivers[u];
+          }
+        }
+
+        const currentUnit1 = mergedAssignments['1'];
+        const currentUnit2 = mergedAssignments['2'];
+        const currentUnit3 = mergedAssignments['3'];
 
         return {
           departure_date: date,
           route_id: o.route_id,
-          is_billable: true,
           vendor_approval_status: 'approved',
           vendor_approved_at: new Date().toISOString(),
           vendor_approved_by: employee?.id ?? null,
@@ -706,11 +795,7 @@ export default function VendorApprovalPage() {
           assigned_driver_id: currentUnit1,
           assigned_driver_id_unit2: currentUnit2,
           assigned_driver_id_unit3: currentUnit3,
-          driver_assignments: {
-            '1': currentUnit1,
-            '2': currentUnit2,
-            '3': currentUnit3,
-          },
+          driver_assignments: mergedAssignments,
           updated_at: new Date().toISOString(),
         };
       });
@@ -951,7 +1036,7 @@ export default function VendorApprovalPage() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedOrderForMap(order);
-                                  setVendorSelectedUnit(1);
+                                  setVendorSelectedUnit(order.vendor_units?.[0] || 1);
                                 }}
                                 title="Lihat Visual Denah Kursi"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-all cursor-pointer shadow-2xs active:scale-95"
@@ -959,10 +1044,25 @@ export default function VendorApprovalPage() {
                                 <span>💺</span>
                                 <span className="text-[10px] font-bold text-amber-700">Kursi</span>
                               </button>
-                              {order.unit_count > 1 && (
+                              {order.unit_count > 1 ? (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold border border-indigo-200">
-                                  {order.unit_count} Unit Mobil
+                                  {order.vendor_units?.length || 1} Unit Vendor {order.internal_units?.length > 0 ? `(${order.unit_count} Total)` : ''}
                                 </span>
+                              ) : null}
+                              {order.internal_units && order.internal_units.length > 0 && (
+                                <>
+                                  {order.internal_units.map((u) => {
+                                    const drvId = order.driver_assignments?.[String(u)] ||
+                                      (u === 1 ? order.assigned_driver_id : u === 2 ? order.assigned_driver_id_unit2 : order.assigned_driver_id_unit3);
+                                    const drvObj = availableDrivers.find((d) => d.id === drvId);
+                                    const drvName = drvObj?.name || 'Driver';
+                                    return (
+                                      <span key={u} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold border border-slate-200">
+                                        🏢 {drvName} (Internal PT)
+                                      </span>
+                                    );
+                                  })}
+                                </>
                               )}
                             </div>
                             {order.vendor_approval_note && (
@@ -1133,9 +1233,36 @@ export default function VendorApprovalPage() {
                           : `Unit ${uNum}`
                       : `Mobil Unit ${uNum}`;
 
+                    const isInternal = singleApproveModal.order.internal_units?.includes(uNum);
+
+                    if (isInternal) {
+                      const drvId = singleApproveModal.order.driver_assignments?.[String(uNum)] ||
+                        (uNum === 1 ? singleApproveModal.order.assigned_driver_id : uNum === 2 ? singleApproveModal.order.assigned_driver_id_unit2 : singleApproveModal.order.assigned_driver_id_unit3);
+                      const drvObj = availableDrivers.find((d) => d.id === drvId);
+                      const drvName = drvObj?.name || 'Firman';
+
+                      return (
+                        <div key={uNum} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-700 font-bold block">{unitLabel}:</span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-full">
+                              Internal PT
+                            </span>
+                          </div>
+                          <div className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-between cursor-not-allowed select-none">
+                            <span className="flex items-center gap-1.5 truncate">
+                              <span>👨‍✈️</span>
+                              <span>{drvName} [Internal PT]</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-normal italic">Dikelola Admin</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div key={uNum} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        <span className="text-xs text-slate-700 font-bold block">{unitLabel}:</span>
+                        <span className="text-xs text-slate-700 font-bold block">{unitLabel} (Sewa Vendor):</span>
                         <TomSelect
                           value={singleApproveModal.unitDrivers[uNum] || ''}
                           onChange={(val) =>
@@ -1161,20 +1288,19 @@ export default function VendorApprovalPage() {
                           createLabel="Daftarkan Supir Baru"
                         />
                       </div>
-
                     );
                   })}
                 </div>
               ) : (
                 <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                   <TomSelect
-                    value={singleApproveModal.unitDrivers[1] || ''}
+                    value={singleApproveModal.unitDrivers[singleApproveModal.order.vendor_units?.[0] || 1] || ''}
                     onChange={(val) =>
                       setSingleApproveModal((prev) =>
                         prev
                           ? {
                             ...prev,
-                            unitDrivers: { ...prev.unitDrivers, [1]: val },
+                            unitDrivers: { ...prev.unitDrivers, [singleApproveModal.order.vendor_units?.[0] || 1]: val },
                           }
                           : null
                       )
@@ -1182,18 +1308,16 @@ export default function VendorApprovalPage() {
                     options={getDriverOptionsForUnit(
                       singleApproveModal.order.departure_date,
                       singleApproveModal.order.route_id,
-                      1,
+                      singleApproveModal.order.vendor_units?.[0] || 1,
                       { [singleApproveModal.order.route_id]: singleApproveModal.unitDrivers }
                     )}
                     placeholder="-- Pilih Supir Rute Ini --"
                     onCreate={(typed) =>
-                      handleOpenAddDriver(typed, singleApproveModal.order.route_id, 1, false)
+                      handleOpenAddDriver(typed, singleApproveModal.order.route_id, singleApproveModal.order.vendor_units?.[0] || 1, false)
                     }
                     createLabel="Daftarkan Supir Baru"
                   />
                 </div>
-
-
               )}
             </div>
 
@@ -1234,7 +1358,6 @@ export default function VendorApprovalPage() {
 
             <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
               {bulkApproveModal.orders.map((order, oIdx) => {
-                const uCount = order.unit_count || 1;
                 return (
                   <div key={order.route_id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
@@ -1246,9 +1369,9 @@ export default function VendorApprovalPage() {
                       </span>
                     </div>
 
-                    {uCount > 1 ? (
+                    {order.unit_count > 1 ? (
                       <div className="space-y-2 pt-1">
-                        {[...Array(uCount)].map((_, uIdx) => {
+                        {[...Array(order.unit_count)].map((_, uIdx) => {
                           const uNum = uIdx + 1;
                           const isKB = order.route_name.toLowerCase().includes('karawang barat');
                           const unitLabel = isKB
@@ -1259,9 +1382,32 @@ export default function VendorApprovalPage() {
                                 : `Unit ${uNum}`
                             : `Mobil Unit ${uNum}`;
 
+                          const isInternal = order.internal_units?.includes(uNum);
+
+                          if (isInternal) {
+                            const drvId = order.driver_assignments?.[String(uNum)] ||
+                              (uNum === 1 ? order.assigned_driver_id : uNum === 2 ? order.assigned_driver_id_unit2 : order.assigned_driver_id_unit3);
+                            const drvObj = availableDrivers.find((d) => d.id === drvId);
+                            const drvName = drvObj?.name || 'Firman';
+
+                            return (
+                              <div key={uNum} className="space-y-1 bg-slate-100 p-2 rounded-lg border border-slate-200">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] text-slate-700 font-bold block">{unitLabel}:</span>
+                                  <span className="text-[9px] font-bold text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                                    Internal PT
+                                  </span>
+                                </div>
+                                <div className="w-full px-2.5 py-1.5 bg-slate-200/70 border border-slate-300 rounded-md text-xs font-bold text-slate-700 flex items-center justify-between cursor-not-allowed select-none">
+                                  <span>👨‍✈️ {drvName} [Internal PT]</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           return (
                             <div key={uNum} className="space-y-1 bg-white p-2 rounded-lg border border-slate-200">
-                              <span className="text-[11px] text-slate-700 font-bold block">{unitLabel}:</span>
+                              <span className="text-[11px] text-slate-700 font-bold block">{unitLabel} (Sewa Vendor):</span>
                               <TomSelect
                                 value={bulkApproveModal.routeDrivers[order.route_id]?.[uNum] || ''}
                                 onChange={(val) =>
@@ -1288,21 +1434,20 @@ export default function VendorApprovalPage() {
                                 createLabel="Daftarkan Supir Baru"
                               />
                             </div>
-
                           );
                         })}
                       </div>
                     ) : (
                       <div className="bg-white p-2 rounded-lg border border-slate-200">
                         <TomSelect
-                          value={bulkApproveModal.routeDrivers[order.route_id]?.[1] || ''}
+                          value={bulkApproveModal.routeDrivers[order.route_id]?.[order.vendor_units?.[0] || 1] || ''}
                           onChange={(val) =>
                             setBulkApproveModal((prev) => {
                               if (!prev) return null;
                               const nextDrivers = { ...prev.routeDrivers };
                               nextDrivers[order.route_id] = {
                                 ...(nextDrivers[order.route_id] || {}),
-                                1: val,
+                                [order.vendor_units?.[0] || 1]: val,
                               };
                               return { ...prev, routeDrivers: nextDrivers };
                             })
@@ -1310,18 +1455,16 @@ export default function VendorApprovalPage() {
                           options={getDriverOptionsForUnit(
                             bulkApproveModal.date,
                             order.route_id,
-                            1,
+                            order.vendor_units?.[0] || 1,
                             bulkApproveModal.routeDrivers
                           )}
                           placeholder="-- Pilih Supir --"
                           onCreate={(typed) =>
-                            handleOpenAddDriver(typed, order.route_id, 1, true)
+                            handleOpenAddDriver(typed, order.route_id, order.vendor_units?.[0] || 1, true)
                           }
                           createLabel="Daftarkan Supir Baru"
                         />
                       </div>
-
-
                     )}
                   </div>
                 );
@@ -1386,15 +1529,14 @@ export default function VendorApprovalPage() {
                       </div>
                     </div>
 
-                    {/* Unit Selector (If Multi-Unit Enabled) */}
-                    {isMulti && (
+                    {/* Unit Selector (If Multiple Vendor Units) */}
+                    {(selectedOrderForMap.vendor_units?.length || 1) > 1 ? (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
                         <label className="text-xs font-bold text-slate-900 block">
-                          🚗 Pilih Unit Mobil untuk Dilihat:
+                          🚗 Pilih Unit Mobil Sewa Vendor:
                         </label>
                         <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                          {[...Array(effectiveUnitCount)].map((_, idx) => {
-                            const uNum = idx + 1;
+                          {selectedOrderForMap.vendor_units.map((uNum) => {
                             const isSel = vendorSelectedUnit === uNum;
                             const unitBookingsCount = allBookings.filter(
                               (b) => b.route_id === selectedOrderForMap.route_id &&
@@ -1428,6 +1570,17 @@ export default function VendorApprovalPage() {
                           })}
                         </div>
                       </div>
+                    ) : (
+                      selectedOrderForMap.internal_units && selectedOrderForMap.internal_units.length > 0 && (
+                        <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between">
+                          <span>
+                            🚗 Menampilkan Denah Kursi <strong>{isKB ? (vendorSelectedUnit === 2 ? 'Unit 2 (Galuh Mas)' : `Unit ${vendorSelectedUnit}`) : `Unit ${vendorSelectedUnit}`}</strong> (Sewa Vendor).
+                          </span>
+                          <span className="text-[11px] text-blue-600 font-medium">
+                            (Unit internal dikelola langsung oleh Admin)
+                          </span>
+                        </div>
+                      )
                     )}
 
                     {/* SeatMap render */}
@@ -1470,14 +1623,16 @@ export default function VendorApprovalPage() {
               {/* Passenger List Summary */}
               <div className="mt-4 pt-3 border-t border-slate-200">
                 <h4 className="text-xs font-bold text-slate-800 mb-2 flex items-center justify-between">
-                  <span>👥 Daftar Penumpang ({selectedOrderForMap.route_name}):</span>
+                  <span>
+                    👥 Daftar Penumpang {selectedOrderForMap.unit_count > 1 ? `(Unit ${vendorSelectedUnit})` : `(${selectedOrderForMap.route_name})`}:
+                  </span>
                   <span className="text-[11px] font-normal text-slate-500">
-                    Total {allBookings.filter(b => b.route_id === selectedOrderForMap.route_id && b.departure_date === selectedOrderForMap.departure_date && b.status === 'confirmed').length} orang
+                    Total {allBookings.filter(b => b.route_id === selectedOrderForMap.route_id && b.departure_date === selectedOrderForMap.departure_date && (selectedOrderForMap.unit_count > 1 ? (b.unit_number || 1) === vendorSelectedUnit : true) && b.status === 'confirmed').length} orang
                   </span>
                 </h4>
                 <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                   {allBookings
-                    .filter((b) => b.route_id === selectedOrderForMap.route_id && b.departure_date === selectedOrderForMap.departure_date && b.status === 'confirmed')
+                    .filter((b) => b.route_id === selectedOrderForMap.route_id && b.departure_date === selectedOrderForMap.departure_date && (selectedOrderForMap.unit_count > 1 ? (b.unit_number || 1) === vendorSelectedUnit : true) && b.status === 'confirmed')
                     .map((b) => {
                       const empName = (b as any).employee?.name || 'Penumpang';
                       const dept = (b as any).employee?.department || '';

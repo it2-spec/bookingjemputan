@@ -23,6 +23,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Dialog } from '../../components/ui/Dialog';
 import { useAdminBookings, useCancelBooking } from '../../hooks/useBooking';
+import { DRIVER_VEHICLE_MODELS } from '../../components/driver/DriverProfileModal';
+import { LicensePlateInput } from '../../components/ui/LicensePlateInput';
 import { useRoutes } from '../../hooks/useRoutes';
 import { supabase } from '../../lib/supabase';
 import {
@@ -51,6 +53,8 @@ export default function AdminPassengerList() {
   const [newPhone, setNewPhone] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('superadmin');
   const [newDriverType, setNewDriverType] = useState<'internal' | 'vendor'>('vendor');
+  const [newDriverPlate, setNewDriverPlate] = useState('');
+  const [newDriverVehicle, setNewDriverVehicle] = useState<string>(DRIVER_VEHICLE_MODELS[0]);
   const [savingUser, setSavingUser] = useState(false);
 
   const { data: routes } = useRoutes();
@@ -153,6 +157,8 @@ export default function AdminPassengerList() {
       };
       if (newRole === 'driver') {
         payload.driver_type = newDriverType;
+        payload.license_plate = newDriverPlate.trim() || null;
+        payload.vehicle_model = newDriverVehicle || null;
       }
 
       const { error } = await supabase.from('employees').insert(payload);
@@ -164,6 +170,8 @@ export default function AdminPassengerList() {
       setNewNik('');
       setNewName('');
       setNewPhone('');
+      setNewDriverPlate('');
+      setNewDriverVehicle(DRIVER_VEHICLE_MODELS[0]);
     } catch (err: any) {
       toast.error(err.message || 'Gagal membuat user baru');
     } finally {
@@ -528,21 +536,51 @@ export default function AdminPassengerList() {
           </div>
 
           {newRole === 'driver' && (
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
-              <label className="text-xs font-bold text-blue-900 block">
-                🏢 Kategori / Tipe Driver <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={newDriverType}
-                onChange={(e) => setNewDriverType(e.target.value as 'internal' | 'vendor')}
-                className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-bold text-blue-950"
-              >
-                <option value="vendor">💳 Driver Sewa Vendor (Masuk Tagihan Invoice)</option>
-                <option value="internal">🏢 Driver Internal PT (Armada / Supir Sendiri - Rp 0)</option>
-              </select>
-              <p className="text-[11px] text-blue-700">
-                Otomatis menentukan status tagihan invoice saat ditugaskan ke rute.
-              </p>
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-blue-900 block">
+                  🏢 Kategori / Tipe Driver <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newDriverType}
+                  onChange={(e) => setNewDriverType(e.target.value as 'internal' | 'vendor')}
+                  className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-bold text-blue-950"
+                >
+                  <option value="vendor">💳 Driver Sewa Vendor (Masuk Tagihan Invoice)</option>
+                  <option value="internal">🏢 Driver Internal PT (Armada / Supir Sendiri - Rp 0)</option>
+                </select>
+                <p className="text-[11px] text-blue-700">
+                  Otomatis menentukan status tagihan invoice saat ditugaskan ke rute.
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="text-xs font-bold text-blue-950 block mb-1">
+                    Nomor Polisi (Plat Mobil)
+                  </label>
+                  <LicensePlateInput
+                    value={newDriverPlate}
+                    onChange={setNewDriverPlate}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-blue-950 block mb-1">
+                    Jenis Kendaraan
+                  </label>
+                  <select
+                    value={newDriverVehicle}
+                    onChange={(e) => setNewDriverVehicle(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-blue-200 rounded-lg font-semibold text-slate-900 cursor-pointer"
+                  >
+                    {DRIVER_VEHICLE_MODELS.map((model) => (
+                      <option key={model} value={model}>
+                        🚗 {model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 

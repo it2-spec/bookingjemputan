@@ -99,19 +99,48 @@ export default function BookingPage() {
     return 2;
   };
 
-  // Automatically sync unit selection when pickup point changes (if multi-unit active)
+  const [dailyOverride, setDailyOverride] = useState<{
+    daily_unit_count?: number;
+    daily_vehicle_type?: string;
+    override_vehicle_type?: string;
+  } | null>(null);
+
   useEffect(() => {
-    if (selectedRoute?.unit_count && selectedRoute.unit_count > 1 && selectedPickupPoint) {
-      const autoUnit = getUnitFromPickupPoint(selectedPickupPoint);
-      setSelectedUnitNumber(autoUnit);
-      setSelectedSeat(null);
-    }
-  }, [selectedPickupPoint, selectedRoute?.unit_count]);
+    if (!selectedRouteId || !tomorrowDate) return;
+    supabase
+      .from('invoice_daily_overrides')
+      .select('daily_unit_count, daily_vehicle_type, override_vehicle_type')
+      .eq('departure_date', tomorrowDate)
+      .eq('route_id', selectedRouteId)
+      .maybeSingle()
+      .then(({ data }) => setDailyOverride(data || null));
+  }, [selectedRouteId, tomorrowDate]);
 
   const { data: bookings = [], isLoading: bookingsLoading } = useRouteBookings(
     selectedRouteId,
     tomorrowDate
   );
+
+  const maxUnitFromBookings = bookings.reduce(
+    (max, b) => Math.max(max, b.unit_number || 1),
+    1
+  );
+  const effectiveUnitCount = Math.max(
+    dailyOverride?.daily_unit_count || 1,
+    selectedRoute?.unit_count || 1,
+    maxUnitFromBookings
+  );
+  const isMultiUnit = effectiveUnitCount > 1;
+
+  // Automatically sync unit selection when pickup point changes (if multi-unit active)
+  useEffect(() => {
+    if (isMultiUnit && selectedPickupPoint) {
+      const autoUnit = getUnitFromPickupPoint(selectedPickupPoint);
+      setSelectedUnitNumber(autoUnit);
+      setSelectedSeat(null);
+    }
+  }, [selectedPickupPoint, isMultiUnit]);
+
   const { data: activeBooking } = useActiveBooking(
     employee?.id || null,
     tomorrowDate
@@ -145,14 +174,14 @@ export default function BookingPage() {
 
     try {
       const confirmedCount = bookings.filter(b => b.status === 'confirmed').length + 1;
-      const vehicleType = getVehicleType(confirmedCount, selectedRoute?.manual_vehicle_type);
+      const vehicleType = isMultiUnit ? 'Avanza' : getVehicleType(confirmedCount, selectedRoute?.manual_vehicle_type);
 
       await supabase.from('bookings').insert({
         employee_id: employee.id,
         route_id: selectedRouteId,
         departure_date: tomorrowDate,
         seat_number: selectedSeat,
-        unit_number: (selectedRoute?.unit_count && selectedRoute.unit_count > 1) ? selectedUnitNumber : 1,
+        unit_number: isMultiUnit ? selectedUnitNumber : 1,
         vehicle_type: vehicleType,
         pickup_point: selectedPickupPoint,
         status: 'confirmed',
@@ -344,27 +373,35 @@ export default function BookingPage() {
               <BookingInfoCard
                 routeName={selectedRoute.route_name}
                 departureDate={tomorrowDate}
-                vehicleType={vehicleInfo.vehicleType}
-                confirmedCount={vehicleInfo.confirmedCount}
-                maxSeats={vehicleInfo.maxSeats}
-                remainingSeats={vehicleInfo.remainingSeats}
+                vehicleType={isMultiUnit ? 'Avanza' : vehicleInfo.vehicleType}
+                confirmedCount={
+                  isMultiUnit
+                    ? bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber && b.status === 'confirmed').length
+                    : vehicleInfo.confirmedCount
+                }
+                maxSeats={isMultiUnit ? 6 : vehicleInfo.maxSeats}
+                remainingSeats={
+                  isMultiUnit
+                    ? Math.max(0, 6 - bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber && b.status === 'confirmed').length)
+                    : vehicleInfo.remainingSeats
+                }
                 isClosed={!bookingOpen}
               />
             )}
 
-            {/* Unit Selector Tab (Only shown if total bookings > 6 and Admin sets multi-unit) */}
-            {selectedRoute?.unit_count && selectedRoute.unit_count > 1 && bookings.filter(b => b.status === 'confirmed').length > 6 && (
+            {/* Unit Selector Tab (Shown whenever isMultiUnit is true) */}
+            {isMultiUnit && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl space-y-2">
                 <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                  🚗 Pilih Unit Armada Rute {selectedRoute.route_name}:
+                  🚗 Pilih Unit Armada Rute {selectedRoute?.route_name || ''}:
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {[...Array(selectedRoute.unit_count)].map((_, idx) => {
+                  {[...Array(effectiveUnitCount)].map((_, idx) => {
                     const uNum = idx + 1;
                     const isSelected = selectedUnitNumber === uNum;
                     const uBookingsCount = bookings.filter((b) => (b.unit_number || 1) === uNum && b.status === 'confirmed').length;
 
-                    const isKB = selectedRoute.route_name.toLowerCase().includes('karawang barat');
+                    const isKB = (selectedRoute?.route_name || '').toLowerCase().includes('karawang barat');
                     const unitTitle = isKB
                       ? uNum === 1
                         ? 'Tanjung Pura'
@@ -388,7 +425,7 @@ export default function BookingPage() {
                       >
                         <div className="font-bold text-xs">{unitTitle}</div>
                         <div className={`text-[10px] font-normal mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
-                          Terisi {uBookingsCount} Kursi
+                          Terisi {uBookingsCount} / 6 Kursi
                         </div>
                       </button>
                     );
@@ -400,17 +437,17 @@ export default function BookingPage() {
             {/* Seat map filtered by selected unit */}
             {bookingsLoading ? (
               <SeatMapSkeleton />
-            ) : vehicleInfo.isFull ? (
+            ) : (isMultiUnit ? (bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber && b.status === 'confirmed').length >= 6) : vehicleInfo.isFull) ? (
               <div className="text-center py-8">
                 <p className="text-slate-600 font-medium">
-                  Semua kursi sudah terisi penuh.
+                  Semua kursi pada unit ini sudah terisi penuh.
                 </p>
               </div>
             ) : (
               <SeatMap
-                vehicleType={vehicleInfo.vehicleType}
+                vehicleType={isMultiUnit ? 'Avanza' : vehicleInfo.vehicleType}
                 bookings={
-                  (selectedRoute?.unit_count || 1) > 1
+                  isMultiUnit
                     ? normalizeUnitBookings(
                         bookings.filter((b) => (b.unit_number || 1) === selectedUnitNumber),
                         6,

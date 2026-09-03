@@ -21,11 +21,14 @@ import {
   CheckCircle,
   UserPlus,
   Trash2,
+  Edit,
 } from 'lucide-react';
 
 
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
+import { DRIVER_VEHICLE_MODELS } from '../../components/driver/DriverProfileModal';
+import { LicensePlateInput } from '../../components/ui/LicensePlateInput';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -64,7 +67,7 @@ export default function AdminDashboard() {
   const [returnRouteDrivers, setReturnRouteDrivers] = useState<Record<string, string>>({}); // route_id_unit -> return_driver_employee_id
   const [showReturnDriverOverride, setShowReturnDriverOverride] = useState<Record<string, boolean>>({}); // route_id -> boolean
   const [routeApprovalStatus, setRouteApprovalStatus] = useState<Record<string, 'pending' | 'approved' | 'rejected'>>({}); // route_id -> vendor_approval_status
-  const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null; department?: string; driver_type?: 'internal' | 'vendor' | null }[]>([]);
+  const [availableDrivers, setAvailableDrivers] = useState<{ id: string; name: string; phone: string | null; department?: string; driver_type?: 'internal' | 'vendor' | null; license_plate?: string | null; vehicle_model?: string | null }[]>([]);
   const [selectedSeatForAdmin, setSelectedSeatForAdmin] = useState<{ seatNumber: number; booking?: Booking } | null>(null);
 
   // Manual Passenger Booking State (Visual Denah Kursi)
@@ -92,8 +95,19 @@ export default function AdminDashboard() {
   } | null>(null);
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverPhone, setNewDriverPhone] = useState('');
+  const [newDriverPlate, setNewDriverPlate] = useState('');
+  const [newDriverVehicle, setNewDriverVehicle] = useState<string>(DRIVER_VEHICLE_MODELS[0]);
   const [newDriverType, setNewDriverType] = useState<'internal' | 'vendor'>('vendor');
   const [isSavingNewDriver, setIsSavingNewDriver] = useState(false);
+
+  // Edit Existing Driver Modal State
+  const [editingDriver, setEditingDriver] = useState<any | null>(null);
+  const [editDriverName, setEditDriverName] = useState('');
+  const [editDriverPhone, setEditDriverPhone] = useState('');
+  const [editDriverPlate, setEditDriverPlate] = useState('');
+  const [editDriverVehicle, setEditDriverVehicle] = useState<string>(DRIVER_VEHICLE_MODELS[0]);
+  const [editDriverType, setEditDriverType] = useState<'internal' | 'vendor'>('vendor');
+  const [isSavingEditDriver, setIsSavingEditDriver] = useState(false);
 
   const handleOpenAddDriver = (
     typedName: string,
@@ -102,6 +116,8 @@ export default function AdminDashboard() {
   ) => {
     setNewDriverName(typedName);
     setNewDriverPhone('');
+    setNewDriverPlate('');
+    setNewDriverVehicle(DRIVER_VEHICLE_MODELS[0]);
     setNewDriverType('vendor');
     setNewDriverModal({
       isOpen: true,
@@ -109,6 +125,15 @@ export default function AdminDashboard() {
       routeId,
       unitNumber,
     });
+  };
+
+  const handleOpenEditDriver = (driver: any) => {
+    setEditingDriver(driver);
+    setEditDriverName(driver.name || '');
+    setEditDriverPhone(driver.phone || '');
+    setEditDriverPlate(driver.license_plate || '');
+    setEditDriverVehicle(driver.vehicle_model || DRIVER_VEHICLE_MODELS[0]);
+    setEditDriverType(driver.driver_type === 'internal' ? 'internal' : 'vendor');
   };
 
   const handleSaveNewDriver = async (e: React.FormEvent) => {
@@ -131,11 +156,13 @@ export default function AdminDashboard() {
           nik: generatedNik,
           name: newDriverName.trim(),
           phone: newDriverPhone.trim(),
+          license_plate: newDriverPlate.trim() || null,
+          vehicle_model: newDriverVehicle || null,
           department: newDriverType === 'internal' ? 'Driver Internal' : 'Vendor Driver',
           role: 'driver',
           driver_type: newDriverType,
         })
-        .select('id, name, phone, department, driver_type')
+        .select('id, name, phone, department, driver_type, license_plate, vehicle_model')
         .single();
 
       if (error) throw error;
@@ -159,6 +186,41 @@ export default function AdminDashboard() {
       toast.error(err.message || 'Gagal mendaftarkan supir baru');
     } finally {
       setIsSavingNewDriver(false);
+    }
+  };
+
+  const handleSaveEditDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDriver) return;
+
+    if (!editDriverName.trim()) {
+      toast.error('Nama supir tidak boleh kosong');
+      return;
+    }
+
+    setIsSavingEditDriver(true);
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({
+          name: editDriverName.trim(),
+          phone: editDriverPhone.trim() || null,
+          license_plate: editDriverPlate.trim() || null,
+          vehicle_model: editDriverVehicle || null,
+          driver_type: editDriverType,
+          department: editDriverType === 'internal' ? 'Driver Internal' : 'Vendor Driver',
+        })
+        .eq('id', editingDriver.id);
+
+      if (error) throw error;
+
+      toast.success(`Data supir ${editDriverName.trim()} & kendaraan berhasil diperbarui! 🎉`);
+      await fetchDrivers();
+      setEditingDriver(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal memperbarui data supir');
+    } finally {
+      setIsSavingEditDriver(false);
     }
   };
 
@@ -410,10 +472,13 @@ export default function AdminDashboard() {
     return availableDrivers.map((d) => {
       const isInternal = d.driver_type === 'internal' || (!d.driver_type && (d.name.toLowerCase().includes('internal') || (d.department || '').toLowerCase().includes('internal')));
       const typeTag = isInternal ? '🏢 [Internal PT]' : '💳 [Vendor]';
+      const plateTag = d.license_plate ? ` • ${d.license_plate}` : '';
+      const vehicleTag = d.vehicle_model ? ` (${d.vehicle_model})` : '';
+      const sub = [d.phone ? `WA: ${d.phone}` : '', d.license_plate ? `Plat: ${d.license_plate}` : '', d.vehicle_model ? `Mobil: ${d.vehicle_model}` : ''].filter(Boolean).join(' • ');
       return {
         value: d.id,
-        label: `👨‍✈️ ${d.name} ${typeTag}`,
-        sublabel: d.phone ? `No. Telp / WA: ${d.phone}` : undefined,
+        label: `👨‍✈️ ${d.name} ${typeTag}${plateTag}${vehicleTag}`,
+        sublabel: sub || undefined,
       };
     });
   }, [availableDrivers]);
@@ -909,7 +974,7 @@ export default function AdminDashboard() {
 
         const { error: updErr } = await supabase
           .from('bookings')
-          .update({ unit_number: targetUnit })
+          .update({ unit_number: targetUnit, vehicle_type: 'Avanza' })
           .eq('id', booking.id);
         if (!updErr) updatedCount++;
       }
@@ -1153,33 +1218,68 @@ export default function AdminDashboard() {
                               const currentVal = routeDrivers[`${stat.route.id}_${uNum}`] || (uNum === 1 ? routeDrivers[stat.route.id] : '') || '';
 
                               return (
-                                <div key={uNum} className="flex-1 min-w-[200px] bg-white p-2 rounded-lg border border-slate-200 shadow-2xs space-y-1">
-                                  <span className="text-[11px] text-slate-700 font-bold block">{unitLabel}:</span>
+                                  <div key={uNum} className="flex-1 min-w-[200px] bg-white p-2 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                                    <span className="text-[11px] text-slate-700 font-bold block">{unitLabel}:</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="flex-1">
+                                        <TomSelect
+                                          value={currentVal}
+                                          onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, uNum)}
+                                          options={driverOptions}
+                                          placeholder="-- Pilih Supir Rute Ini --"
+                                          onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, uNum)}
+                                          createLabel="Daftarkan Supir Baru"
+                                        />
+                                      </div>
+                                      {currentVal && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const d = availableDrivers.find((drv) => drv.id === currentVal);
+                                            if (d) handleOpenEditDriver(d);
+                                          }}
+                                          className="p-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-semibold cursor-pointer shrink-0 border border-slate-200"
+                                          title="Edit Data Supir & Kendaraan"
+                                        >
+                                          <Edit className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="flex-1 min-w-[220px] max-w-sm">
+                              <span className="text-xs text-slate-600 font-medium block mb-1">Supir / Driver (Berangkat):</span>
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex-1">
                                   <TomSelect
-                                    value={currentVal}
-                                    onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, uNum)}
+                                    value={routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id] || ''}
+                                    onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, 1)}
                                     options={driverOptions}
                                     placeholder="-- Pilih Supir Rute Ini --"
-                                    onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, uNum)}
+                                    onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, 1)}
                                     createLabel="Daftarkan Supir Baru"
                                   />
                                 </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="flex-1 min-w-[220px] max-w-sm">
-                            <span className="text-xs text-slate-600 font-medium block mb-1">Supir / Driver (Berangkat):</span>
-                            <TomSelect
-                              value={routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id] || ''}
-                              onChange={(val) => handleAssignDriverToRoute(stat.route.id, val, 1)}
-                              options={driverOptions}
-                              placeholder="-- Pilih Supir Rute Ini --"
-                              onCreate={(typed) => handleOpenAddDriver(typed, stat.route.id, 1)}
-                              createLabel="Daftarkan Supir Baru"
-                            />
-                          </div>
-                        )}
+                                {(routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id]) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const dId = routeDrivers[`${stat.route.id}_1`] || routeDrivers[stat.route.id];
+                                      const d = availableDrivers.find((drv) => drv.id === dId);
+                                      if (d) handleOpenEditDriver(d);
+                                    }}
+                                    className="p-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-semibold cursor-pointer shrink-0 border border-slate-200"
+                                    title="Edit Data Supir & Kendaraan"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                         {/* Toggle Supir Pulang Sore Berbeda (Shift 16:30) */}
                         <div className="w-full pt-1">
@@ -1801,6 +1901,33 @@ export default function AdminDashboard() {
 
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nomor Polisi (Plat Mobil)
+              </label>
+              <LicensePlateInput
+                value={newDriverPlate}
+                onChange={setNewDriverPlate}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Jenis Kendaraan
+              </label>
+              <select
+                value={newDriverVehicle}
+                onChange={(e) => setNewDriverVehicle(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 font-semibold cursor-pointer"
+              >
+                {DRIVER_VEHICLE_MODELS.map((model) => (
+                  <option key={model} value={model}>
+                    🚗 {model}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
                 Kategori Supir / Driver
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -1852,6 +1979,123 @@ export default function AdminDashboard() {
                   <Check className="w-4 h-4" />
                 )}
                 <span>Simpan & Tugaskan</span>
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+
+      {/* Edit Existing Driver & Vehicle Modal */}
+      {editingDriver && (
+        <Dialog
+          isOpen={true}
+          onClose={() => setEditingDriver(null)}
+          title={`Edit Data Supir & Kendaraan — ${editingDriver.name}`}
+        >
+          <form onSubmit={handleSaveEditDriver} className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nama Supir <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={editDriverName}
+                onChange={(e) => setEditDriverName(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nomor WhatsApp / HP <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                required
+                value={editDriverPhone}
+                onChange={(e) => setEditDriverPhone(e.target.value)}
+                placeholder="Contoh: 081234567890"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Nomor Polisi (Plat Mobil)
+              </label>
+              <LicensePlateInput
+                value={editDriverPlate}
+                onChange={setEditDriverPlate}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Jenis Kendaraan
+              </label>
+              <select
+                value={editDriverVehicle}
+                onChange={(e) => setEditDriverVehicle(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 font-semibold cursor-pointer"
+              >
+                {DRIVER_VEHICLE_MODELS.map((model) => (
+                  <option key={model} value={model}>
+                    🚗 {model}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Kategori Supir / Driver
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditDriverType('vendor')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                    editDriverType === 'vendor'
+                      ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  💳 Supir Sewa Vendor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditDriverType('internal')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                    editDriverType === 'internal'
+                      ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  🏢 Supir Internal PT
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingDriver(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingEditDriver}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+              >
+                {isSavingEditDriver ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>Simpan Perubahan</span>
               </button>
             </div>
           </form>

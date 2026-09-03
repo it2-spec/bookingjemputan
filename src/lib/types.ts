@@ -25,6 +25,8 @@ export interface Employee {
   default_pickup_point?: string | null;
   route_change_status?: 'pending' | 'none';
   driver_type?: 'internal' | 'vendor' | null;
+  license_plate?: string | null;
+  vehicle_model?: string | null;
   created_at: string;
 }
 

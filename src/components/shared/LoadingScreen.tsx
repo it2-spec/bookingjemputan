@@ -29,7 +29,7 @@ export function LoadingScreen() {
         </motion.div>
         <div className="text-center">
           <h2 className="text-lg font-bold text-surface-800 dark:text-surface-200 font-[family-name:var(--font-display)]">
-            Shuttle Booking
+            TRACER
           </h2>
           <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
             Memuat...

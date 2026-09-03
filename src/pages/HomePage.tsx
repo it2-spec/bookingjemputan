@@ -110,6 +110,7 @@ export default function HomePage() {
     routeName: string;
     unitNumber: number;
     unitCount: number;
+    dailyVehicle?: string | null;
   } | null>(null);
   const [mapSelectedUnit, setMapSelectedUnit] = useState<number>(1);
 
@@ -265,10 +266,32 @@ export default function HomePage() {
     }
   };
 
-  const handleOpenSeatMap = (booking: Booking) => {
+  const handleOpenSeatMap = async (booking: Booking) => {
     const routeObj = (booking as any).route;
-    const unitCount = routeObj?.unit_count || 1;
     const myUnit = booking.unit_number || 1;
+
+    let effectiveUnitCount = routeObj?.unit_count || 1;
+    let dailyVehicle: string | null = null;
+
+    try {
+      const { data: ov } = await supabase
+        .from('invoice_daily_overrides')
+        .select('daily_unit_count, daily_vehicle_type, override_vehicle_type')
+        .eq('departure_date', booking.departure_date)
+        .eq('route_id', booking.route_id)
+        .maybeSingle();
+
+      if (ov?.daily_unit_count && ov.daily_unit_count > 1) {
+        effectiveUnitCount = ov.daily_unit_count;
+      }
+      dailyVehicle = ov?.daily_vehicle_type || null;
+    } catch (err) {
+      console.error('Error fetching override for seat map:', err);
+    }
+
+    if (myUnit > effectiveUnitCount) {
+      effectiveUnitCount = myUnit;
+    }
 
     setMapSelectedUnit(myUnit);
     setSelectedBookingForMap({
@@ -277,7 +300,8 @@ export default function HomePage() {
       routeId: booking.route_id,
       routeName: routeObj?.route_name || 'Rute Jemputan',
       unitNumber: myUnit,
-      unitCount: unitCount,
+      unitCount: effectiveUnitCount,
+      dailyVehicle,
     });
   };
 
@@ -916,100 +940,105 @@ export default function HomePage() {
         title={`Denah Kursi - ${selectedBookingForMap?.routeName || ''}`}
       >
         <div className="space-y-4 py-2">
-          {selectedBookingForMap && (
-            <>
-              {/* Unit Tabs if Multi-Unit (e.g. 2 Avanza) */}
-              {selectedBookingForMap.unitCount > 1 && (
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    🚗 Pilih Unit Mobil untuk Dilihat:
-                  </label>
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                    {[...Array(selectedBookingForMap.unitCount)].map((_, idx) => {
-                      const uNum = idx + 1;
-                      const isSel = mapSelectedUnit === uNum;
-                      const isMyUnit = (selectedBookingForMap.booking.unit_number || 1) === uNum;
-                      const unitCount = mapRouteBookings.filter(
-                        (b) => (b.unit_number || 1) === uNum && b.status === 'confirmed'
-                      ).length;
+          {selectedBookingForMap && (() => {
+            const maxUnitFromBookings = mapRouteBookings.reduce(
+              (max, b) => Math.max(max, b.unit_number || 1),
+              1
+            );
+            const effectiveUnitCount = Math.max(
+              selectedBookingForMap.unitCount || 1,
+              maxUnitFromBookings,
+              selectedBookingForMap.booking.unit_number || 1
+            );
+            const isMulti = effectiveUnitCount > 1;
 
-                      const isKB = selectedBookingForMap.routeName.toLowerCase().includes('karawang barat');
-                      const label = isKB
-                        ? uNum === 1
-                          ? 'Unit 1 (Tj. Pura)'
-                          : uNum === 2
-                          ? 'Unit 2 (Galuh Mas)'
-                          : `Unit ${uNum}`
-                        : `Unit ${uNum}`;
+            const rawUnitBookings = isMulti
+              ? mapRouteBookings.filter(
+                  (b) => (b.unit_number || 1) === mapSelectedUnit && b.status === 'confirmed'
+                )
+              : mapRouteBookings.filter((b) => b.status === 'confirmed');
 
-                      return (
-                        <button
-                          key={uNum}
-                          type="button"
-                          onClick={() => setMapSelectedUnit(uNum)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border flex items-center gap-1.5 ${
-                            isSel
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <span>{label}</span>
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSel ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            {unitCount} org
-                          </span>
-                          {isMyUnit && (
-                            <span className="text-[9px] bg-amber-400 text-slate-900 px-1 rounded font-extrabold">
-                              Anda
+            const { normalizedBookings, targetSeat } = isMulti
+              ? normalizeUnitBookings(rawUnitBookings, 6, employee?.id)
+              : { normalizedBookings: rawUnitBookings, targetSeat: selectedBookingForMap.booking.seat_number };
+
+            // Determine effective vehicle type: multi-unit is ALWAYS Avanza (6 seats)
+            const vehicleType: VehicleType = isMulti
+              ? (selectedBookingForMap.dailyVehicle === 'Avanza' || !selectedBookingForMap.dailyVehicle ? 'Avanza' : (selectedBookingForMap.dailyVehicle as VehicleType))
+              : getVehicleType(rawUnitBookings.length, (selectedBookingForMap.booking as any).route?.manual_vehicle_type);
+
+            // Highlight user's seat only if viewing their assigned unit
+            const isViewingMyUnit = !isMulti || (selectedBookingForMap.booking.unit_number || 1) === mapSelectedUnit;
+            const activeSeat = isViewingMyUnit ? targetSeat : null;
+
+            return (
+              <>
+                {/* Unit Tabs if Multi-Unit (e.g. 2 Avanza) */}
+                {isMulti && (
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                      🚗 Pilih Unit Mobil untuk Dilihat:
+                    </label>
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {[...Array(effectiveUnitCount)].map((_, idx) => {
+                        const uNum = idx + 1;
+                        const isSel = mapSelectedUnit === uNum;
+                        const isMyUnit = (selectedBookingForMap.booking.unit_number || 1) === uNum;
+                        const unitCount = mapRouteBookings.filter(
+                          (b) => (b.unit_number || 1) === uNum && b.status === 'confirmed'
+                        ).length;
+
+                        const isKB = selectedBookingForMap.routeName.toLowerCase().includes('karawang barat');
+                        const label = isKB
+                          ? uNum === 1
+                            ? 'Unit 1 (Tj. Pura)'
+                            : uNum === 2
+                            ? 'Unit 2 (Galuh Mas)'
+                            : `Unit ${uNum}`
+                          : `Unit ${uNum}`;
+
+                        return (
+                          <button
+                            key={uNum}
+                            type="button"
+                            onClick={() => setMapSelectedUnit(uNum)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border flex items-center gap-1.5 ${
+                              isSel
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>{label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSel ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              {unitCount} org
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            {isMyUnit && (
+                              <span className="text-[9px] bg-amber-400 text-slate-900 px-1 rounded font-extrabold">
+                                Anda
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Render SeatMap */}
-              {(() => {
-                const isMulti = selectedBookingForMap.unitCount > 1;
-                const rawUnitBookings = isMulti
-                  ? mapRouteBookings.filter(
-                      (b) => (b.unit_number || 1) === mapSelectedUnit && b.status === 'confirmed'
-                    )
-                  : mapRouteBookings.filter((b) => b.status === 'confirmed');
-
-                const { normalizedBookings, targetSeat } = isMulti
-                  ? normalizeUnitBookings(rawUnitBookings, 6, employee?.id)
-                  : { normalizedBookings: rawUnitBookings, targetSeat: selectedBookingForMap.booking.seat_number };
-
-                // Determine effective vehicle type
-                const vehicleType: VehicleType = isMulti
-                  ? 'Avanza'
-                  : getVehicleType(rawUnitBookings.length, (selectedBookingForMap.booking as any).route?.manual_vehicle_type);
-
-                // Highlight user's seat only if viewing their assigned unit
-                const isViewingMyUnit = !isMulti || (selectedBookingForMap.booking.unit_number || 1) === mapSelectedUnit;
-                const activeSeat = isViewingMyUnit ? targetSeat : null;
-
-                return (
-                  <>
-                    <SeatMap
-                      vehicleType={vehicleType}
-                      bookings={normalizedBookings}
-                      selectedSeat={activeSeat}
-                      onSeatSelect={() => {}}
-                    />
-                    <p className="text-center text-xs text-slate-500 mt-2">
-                      {selectedBookingForMap.unitCount > 1 && (selectedBookingForMap.booking.unit_number || 1) !== mapSelectedUnit
-                        ? 'Anda sedang melihat unit lain.'
-                        : `Kursi berwarna kuning (No. ${activeSeat || selectedBookingForMap.booking.seat_number}) adalah kursi Anda.`}
-                    </p>
-                  </>
-                );
-              })()}
-
-            </>
-          )}
+                {/* Render SeatMap */}
+                <SeatMap
+                  vehicleType={vehicleType}
+                  bookings={normalizedBookings}
+                  selectedSeat={activeSeat}
+                  onSeatSelect={() => {}}
+                />
+                <p className="text-center text-xs text-slate-500 mt-2">
+                  {isMulti && (selectedBookingForMap.booking.unit_number || 1) !== mapSelectedUnit
+                    ? 'Anda sedang melihat unit lain.'
+                    : `Kursi berwarna kuning (No. ${activeSeat || selectedBookingForMap.booking.seat_number}) adalah kursi Anda.`}
+                </p>
+              </>
+            );
+          })()}
         </div>
       </Dialog>
 

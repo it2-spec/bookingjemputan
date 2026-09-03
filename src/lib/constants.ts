@@ -60,5 +60,5 @@ export const NAV_ITEMS = [
 export const WIB_OFFSET = 7;
 
 /** App metadata */
-export const APP_NAME = 'Shuttle Booking';
-export const APP_VERSION = '1.0.0';
+export const APP_NAME = 'TRACER System';
+export const APP_VERSION = '1.1.0';
